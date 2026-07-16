@@ -5,10 +5,10 @@ if (
     url.hostname === "m.youtube.com") &&
   url.pathname === "/api/timedtext"
 ) {
-  // 防止 YouTube 原生翻译参数影响 DualSubs 翻译器
+  // 删除 YouTube 自带的目标语言参数，避免干扰 DualSubs
   url.searchParams.delete("tlang");
 
-  // 强制进入 DualSubs Translate 翻译模式
+  // 强制进入 DualSubs 翻译模式
   url.searchParams.set("subtype", "Translate");
 }
 
