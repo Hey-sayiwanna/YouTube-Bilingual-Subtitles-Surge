@@ -5,11 +5,20 @@ if (
     url.hostname === "m.youtube.com") &&
   url.pathname === "/api/timedtext"
 ) {
-  // 删除 YouTube 自带的目标语言参数，避免干扰 DualSubs
-  url.searchParams.delete("tlang");
-
-  // 强制进入 DualSubs 翻译模式
-  url.searchParams.set("subtype", "Translate");
+  /*
+   * 只添加 DualSubs 翻译标记。
+   *
+   * 不删除、不修改 YouTube 原有参数：
+   * lang=ko / lang=en
+   * kind=asr
+   * name=字幕轨道ID
+   * tlang
+   * signature
+   * 以及其他参数
+   */
+  if (!url.searchParams.has("subtype")) {
+    url.searchParams.set("subtype", "Translate");
+  }
 }
 
 $done({
