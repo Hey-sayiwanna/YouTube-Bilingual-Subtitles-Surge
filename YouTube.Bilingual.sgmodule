@@ -47,7 +47,7 @@ DualSubs.AutoZH.TimedText.request = type=http-request, pattern=^https?:\/\/(www|
 # TimedText 翻译响应
 # 原文在上，简体中文在下
 # ==================================================
-DualSubs.AutoZH.TimedText.Translate.response = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext\?.*subtype=Translate.*$, requires-body=1, max-size=-1, timeout=60, engine=webview, script-path=https://github.com/DualSubs/Universal/releases/latest/download/Translate.response.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
+DualSubs.AutoZH.TimedText.Translate.response = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext\?.*subtype=Translate.*$, requires-body=1, max-size=-1, timeout=60, engine=webview, script-path=https://github.com/DualSubs/Universal/releases/latest/download/Translate.response.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=ALL
 
 [MITM]
 hostname = %APPEND% www.youtube.com, m.youtube.com, tv.youtube.com, youtubei.googleapis.com
