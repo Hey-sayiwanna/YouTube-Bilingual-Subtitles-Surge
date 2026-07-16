@@ -1,10 +1,10 @@
-#!name=YouTube 自动简中双语字幕 v10
-#!desc=基于 DualSubs 官方字幕结构，仅设置自动识别源语言并翻译为简体中文；原文在上，中文在下
+#!name=YouTube 自动简中双语字幕 v11
+#!desc=兼容自动生成字幕和人工命名字幕，仅补充 Translate 标记；原文在上，简中在下
 #!author=DualSubs / compatibility build
 #!homepage=https://dualsubs.github.io/guide/youtube
 #!icon=https://github.com/DualSubs/YouTube/raw/main/src/assets/icon_rounded.png
 #!category=YouTube
-#!version=10.0
+#!version=11.0
 
 [Script]
 
@@ -34,20 +34,18 @@ DualSubs.AutoZH.Player.response.proto = type=http-response, pattern=^https?:\/\/
 DualSubs.AutoZH.GetWatch.response.proto = type=http-response, pattern=^https?:\/\/youtubei\.googleapis\.com\/youtubei\/v1\/get_watch(\?.+)?$, requires-body=1, max-size=-1, binary-body-mode=1, engine=webview, script-path=https://github.com/DualSubs/YouTube/releases/download/v1.5.11/response.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
 
 # ==================================================
-# 官方 TimedText 字幕请求处理
-# 不再使用自定义 force_translate_request.js
+# TimedText 字幕请求
+# 兼容：
+# 1. 自动生成字幕：kind=asr
+# 2. 人工命名字幕：name=字幕轨道ID
+#
+# 不修改原有字幕参数，只添加 subtype=Translate
 # ==================================================
-DualSubs.AutoZH.TimedText.request = type=http-request, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext(\?.+)?$, engine=webview, script-path=https://github.com/DualSubs/YouTube/releases/download/v1.5.11/request.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
+DualSubs.AutoZH.TimedText.request = type=http-request, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext(\?.+)?$, script-path=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/force_translate_request.js
 
 # ==================================================
-# 官方字幕合并处理
-# 负责人工字幕、外部字幕等双语合并
-# ==================================================
-DualSubs.AutoZH.TimedText.Composite.response = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext\?.*subtype=(Official|External).*$, requires-body=1, max-size=-1, engine=webview, script-path=https://github.com/DualSubs/Universal/releases/latest/download/Composite.Subtitles.response.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
-
-# ==================================================
-# 官方翻译字幕处理
-# 只处理已经被官方请求脚本标记为 Translate 的请求
+# TimedText 翻译响应
+# 原文在上，简体中文在下
 # ==================================================
 DualSubs.AutoZH.TimedText.Translate.response = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext\?.*subtype=Translate.*$, requires-body=1, max-size=-1, timeout=60, engine=webview, script-path=https://github.com/DualSubs/Universal/releases/latest/download/Translate.response.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
 
