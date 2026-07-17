@@ -1,56 +1,77 @@
 import assert from "node:assert/strict";
+import XML from "../src/XML/XML.mjs";
 
-const capturedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="0"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="22160" d="5960" w="1"><s>Make</s><s t="720"> way,</s><s t="1640"> the</s><s t="1880"> beast</s><s t="2720"> has</s><s t="3080"> returned.</s></p></body></timedtext>`;
-let translateRequestURL = "";
+const rollingSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><ws id="0"/><ws id="1" mh="2" ju="0" sd="3"/><wp id="0"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><w t="0" id="1" wp="1" ws="1"/><p t="40" d="4200" w="1"><s>첫 번째 문장</s></p><p t="4230" w="1" a="1"></p><p t="4240" d="4200" w="1"><s>두 번째 문장</s></p></body></timedtext>`;
 
-globalThis.$environment = { "surge-version": "5.0" };
-globalThis.$script = { startTime: Date.now() / 1000 };
-globalThis.$request = {
-	method: "GET",
-	url: "https://www.youtube.com/api/timedtext?v=test&lang=en&format=srv3&subtype=Translate",
-	headers: {},
-};
-globalThis.$response = {
-	status: 200,
-	headers: { "Content-Type": "text/xml; charset=utf-8" },
-	body: capturedSrv3,
-};
-globalThis.$httpClient = {
-	get(request, callback) {
-		translateRequestURL = request.url;
-		callback(null, { status: 200, headers: {} }, JSON.stringify([[['让开，野兽回来了。', "Make way, the beast has returned.", null, null]], null, "en"]));
-	},
-};
+async function runBundle({ url, translation, testName }) {
+	let translateRequestURL = "";
+	globalThis.$environment = { "surge-version": "5.0" };
+	globalThis.$script = { startTime: Date.now() / 1000 };
+	globalThis.$request = { method: "GET", url, headers: {} };
+	globalThis.$response = {
+		status: 200,
+		headers: { "Content-Type": "text/xml; charset=utf-8" },
+		body: rollingSrv3,
+	};
+	globalThis.$httpClient = {
+		get(request, callback) {
+			translateRequestURL = request.url;
+			callback(null, { status: 200, headers: {} }, JSON.stringify([[[translation, "source", null, null]], null, "ko"]));
+		},
+	};
 
-let finish;
-const completed = new Promise(resolve => {
-	finish = resolve;
+	let finish;
+	const completed = new Promise(resolve => {
+		finish = resolve;
+	});
+	globalThis.$done = value => finish(value);
+
+	await import(`../Translate.response.youtube-fix-v15.bundle.js?test=${testName}-${Date.now()}`);
+	let timeout;
+	const output = await Promise.race([
+		completed,
+		new Promise((_, reject) => {
+			timeout = setTimeout(() => reject(new Error(`${testName} bundle test timed out`)), 5000);
+		}),
+	]);
+	clearTimeout(timeout);
+	return { output, translateRequestURL };
+}
+
+const automatic = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=test&kind=asr&lang=ko&format=srv3&subtype=Translate",
+	translation: "第一句\r\u200b\r第二句",
+	testName: "automatic",
 });
-globalThis.$done = value => finish(value);
 
-await import(`../Translate.response.youtube-fix-v14.bundle.js?test=${Date.now()}`);
-let timeout;
-const output = await Promise.race([
-	completed,
-	new Promise((_, reject) => {
-		timeout = setTimeout(() => reject(new Error("bundle test timed out")), 5000);
-	}),
-]);
-clearTimeout(timeout);
+assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
+assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
+assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "15");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "fixed-two-lines");
+const automaticBody = XML.parse(automatic.output.body).timedtext.body;
+assert.equal(automaticBody.w, undefined);
+assert.ok(automaticBody.p.every(paragraph => paragraph["@w"] === undefined && paragraph["@a"] === undefined));
+assert.match(automatic.output.body, /첫 번째 문장&#x000A;第一句/);
+assert.match(automatic.output.body, /두 번째 문장&#x000A;第二句/);
 
-assert.match(translateRequestURL, /translate\.googleapis\.com/);
-assert.match(translateRequestURL, /[?&]sl=auto(?:&|$)/);
-assert.match(translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "14");
-assert.equal(output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
-assert.match(output.body, /rc="2"/);
-assert.match(output.body, /<s>Make way, the beast has returned\.&#x000A;让开，野兽回来了。<\/s>/);
-assert.equal((output.body.match(/<s>/g) ?? []).length, 1);
-assert.doesNotMatch(output.body, /Make  way/);
+const official = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=test&lang=ko&format=srv3&subtype=Translate",
+	translation: "第一句\r\u200b\r第二句",
+	testName: "official",
+});
+
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "15");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
+const officialBody = XML.parse(official.output.body).timedtext.body;
+assert.notEqual(officialBody.w, undefined);
+assert.equal(officialBody.p[0]["@w"], "1");
+assert.equal(officialBody.p[1]["@a"], "1");
 
 console.log(JSON.stringify({
 	standaloneBundle: "passed",
-	boxJsBypassHeader: "passed",
 	googleAutoToZhHans: "passed",
-	capturedSrv3WriteBack: "passed",
+	autoGeneratedFixedTwoLines: "passed",
+	officialCaptionsUnchanged: "passed",
 }, null, 2));

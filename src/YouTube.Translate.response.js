@@ -1,6 +1,11 @@
 import { Console, done, fetch } from "@nsnanocat/util";
 import XML from "./XML/XML.mjs";
-import { ensureYouTubeTimedTextRows, readYouTubeTimedTextParagraph, writeYouTubeTimedTextParagraph } from "./function/youtubeTimedText.mjs";
+import {
+	disableYouTubeASRRollingWindow,
+	ensureYouTubeTimedTextRows,
+	readYouTubeTimedTextParagraph,
+	writeYouTubeTimedTextParagraph,
+} from "./function/youtubeTimedText.mjs";
 
 const SETTINGS = Object.freeze({
 	Source: "AUTO",
@@ -14,19 +19,25 @@ const SETTINGS = Object.freeze({
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 14 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 15 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
 	const originalXML = $response.body ?? "";
 	const originalXMLLength = originalXML.length;
 	const body = XML.parse(originalXML);
+	const requestURL = new URL($request.url);
+	const isAutomaticCaption = requestURL.searchParams.get("kind") === "asr";
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 14 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 15 skipped: response is not timedtext XML");
 		return;
 	}
 
 	ensureYouTubeTimedTextRows(body, 2);
+	if (isAutomaticCaption) {
+		const normalizedParagraphs = disableYouTubeASRRollingWindow(body);
+		Console.info(`YouTube ASR fixed two-line mode: ${normalizedParagraphs} paragraphs`);
+	}
 	let paragraphs = body?.timedtext?.body?.p;
 	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
 	const parsedParagraphs = paragraphs.map(paragraph => readYouTubeTimedTextParagraph(paragraph));
@@ -55,8 +66,9 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "14";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "15";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
+	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "fixed-two-lines" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-XML-Original-Length"] = String(originalXMLLength);
 	$response.headers["X-Hey-Sayiwanna-XML-Modified-Length"] = String($response.body.length);
 	Console.info(`XML write-back length: origin=${originalXMLLength}, modified=${$response.body.length}`);
@@ -80,7 +92,7 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/14",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/15",
 			Referer: "https://translate.google.com",
 		},
 	};

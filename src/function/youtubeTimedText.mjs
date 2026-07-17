@@ -17,6 +17,29 @@ export function ensureYouTubeTimedTextRows(body, minimumRows = 2) {
 }
 
 /**
+ * Turn YouTube's rolling ASR window into independent cues.
+ *
+ * Automatic srv3 captions use a body-level <w> window plus @w/@a paragraph
+ * attributes to retain and scroll earlier cues. Once every cue contains an
+ * original and translated row, that behavior can leave the previous
+ * translation above the current pair and produce three visible rows.
+ * Official/creator-provided captions do not call this function.
+ */
+export function disableYouTubeASRRollingWindow(body) {
+	const timedTextBody = body?.timedtext?.body;
+	if (!timedTextBody) return 0;
+	delete timedTextBody.w;
+
+	let paragraphs = timedTextBody.p;
+	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
+	paragraphs.forEach(paragraph => {
+		delete paragraph["@w"];
+		delete paragraph["@a"];
+	});
+	return paragraphs.length;
+}
+
+/**
  * Read one YouTube srv3 paragraph without changing its original structure.
  * Segment text is concatenated exactly as XML textContent would be; ASR
  * segments already carry their own leading spaces.
