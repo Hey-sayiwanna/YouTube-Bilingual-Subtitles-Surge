@@ -1,0 +1,28 @@
+{
+	"name": "@hey-sayiwanna/youtube-bilingual-subtitles-surge",
+	"version": "14.0.0",
+	"private": true,
+	"type": "module",
+	"description": "独立维护的 Surge YouTube 自动简中双语字幕模块",
+	"homepage": "https://github.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge",
+	"license": "Apache-2.0",
+	"scripts": {
+		"build:player": "node scripts/build-youtube-standalone-bundles.mjs",
+		"build:translate": "rspack build",
+		"build": "npm run build:player && npm run build:translate",
+		"test:request": "node tests/force_translate_request_debug.mjs",
+		"test:xml": "node tests/translate_response_xml_debug.mjs",
+		"test:bundle": "node tests/youtube_translate_bundle_debug.mjs",
+		"test:independence": "node tests/youtube_module_independence_debug.mjs",
+		"test": "npm run test:request && npm run test:xml && npm run test:bundle && npm run test:independence",
+		"verify": "npm run build && npm test"
+	},
+	"dependencies": {
+		"@nsnanocat/util": "^1.8.10"
+	},
+	"devDependencies": {
+		"@rspack/cli": "^1.5.8",
+		"@rspack/core": "^1.5.8",
+		"node-polyfill-webpack-plugin": "^4.1.0"
+	}
+}

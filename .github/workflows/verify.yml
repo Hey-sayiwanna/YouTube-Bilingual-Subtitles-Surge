@@ -1,0 +1,24 @@
+name: Verify YouTube Surge module
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Confirm generated bundles are committed
+        run: git diff --exit-code -- request.youtube-standalone-v14.bundle.js response.youtube-standalone-v14.bundle.js Translate.response.youtube-fix-v14.bundle.js

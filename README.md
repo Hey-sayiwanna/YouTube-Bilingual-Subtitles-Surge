@@ -1,72 +1,60 @@
 # YouTube Bilingual Subtitles for Surge
 
-这是已经实测可用的 **YouTube 自动简中双语字幕 v6**，默认原文在上、简体中文在下。
+独立维护的 YouTube 自动简中双语字幕模块。当前版本为 **v14**，默认原文在上、简体中文在下。
 
-## 模块文件
-
-- `YouTube.Bilingual.sgmodule`
-
-## Surge 云端订阅地址
+## Surge 订阅地址
 
 ```text
 https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/YouTube.Bilingual.sgmodule
 ```
 
-## BoxJS 设置
+这个路径保持不变，后续更新继续使用同一个地址。
 
-打开：
+## 独立性
 
-```text
-http://boxjs.com/#/app/DualSubs.YouTube
+- 所有 `script-path` 均指向本仓库。
+- 不依赖 DualSubs Release 或 `Universal` 仓库。
+- TimedText 翻译响应不读取 BoxJs。
+- Player/GetWatch 使用独立的 `Hey-sayiwanna` 存储命名空间，不读取旧 `@DualSubs` 设置。
+- 保留 `DualSubs.AutoZH.*` 规则名称，仅用于兼容已有 Surge 配置。
+
+## v14 修复
+
+- 兼容 YouTube iOS 的 `srv3` ASR 分段字幕。
+- 保留有效 `<s>` 节点及 `rc>=2`，避免双语第二行被裁掉。
+- 原文分段按原始空格拼接，避免产生双空格。
+- Google 自动检测源语言并翻译为简体中文。
+- 翻译数量不匹配时自动切换逐行重试。
+- 使用独立文件名避免 Surge 脚本缓存。
+
+## 安装
+
+1. 在 Surge 中停用或删除旧 v6、v12、v13 和其他重复的 YouTube 字幕模块。
+2. 使用上面的稳定订阅地址安装。
+3. 开启模块与 MITM，确认 Surge CA 证书已安装并完全信任。
+4. 完全退出 YouTube 后重新打开，并选择视频的原语言字幕。
+
+BoxJs 可以保留，但本模块不会读取其中的旧 DualSubs 配置。
+
+## 项目结构
+
+- `YouTube.Bilingual.sgmodule`：稳定 Surge 订阅入口。
+- `force_translate_request.js`：为 TimedText 请求添加 `subtype=Translate`。
+- `src/YouTube.Translate.response.js`：字幕翻译与 srv3 写回源码。
+- `src/function/youtubeTimedText.mjs`：YouTube XML 读取与双语写回逻辑。
+- `request.youtube-standalone-v14.bundle.js`：独立 Player 请求脚本。
+- `response.youtube-standalone-v14.bundle.js`：独立 Player/GetWatch 响应脚本。
+- `Translate.response.youtube-fix-v14.bundle.js`：从本仓库源码构建的字幕响应脚本。
+- `tests/`：抓包样本结构、编译 Bundle 和独立性测试。
+
+## 本地构建与测试
+
+```bash
+npm ci
+npm run build
+npm test
 ```
 
-建议设置为：
+## 开源说明
 
-```text
-字幕启用类型：翻译字幕（翻译器）
-自动显示：开启
-源语言字幕位置：上面
-翻译服务商：Google
-只显示自动翻译字幕：关闭
-源语言：AUTO
-目标语言：ZH-HANS
-```
-
-## 使用说明
-
-1. 使用“安装新模块”添加上面的云端地址。
-2. 开启 MITM，并确保 Surge CA 证书已经安装且完全信任。
-3. 关闭或删除其他重复的 DualSubs、YouTube 字幕模块。
-4. 在 Surge 的“调整生效顺序”页面中按下面顺序排列：
-
-```text
-YouTube 自动简中双语字幕 v6
-BoxJS
-YouTube Enhance 最新兼容版 + ATT接口
-```
-
-Surge 模块从上到下依次生效，**最底部优先级最高**，因此字幕模块放在去广告模块上面。
-
-5. 在 YouTube 中优先选择原语言字幕，不要选择 YouTube 自带的中文自动翻译。
-6. iPhone 和 iPad 的 BoxJS 设置、模块开关和 MITM 证书需要分别检查。
-
-## 版本说明
-
-- 当前版本为 v6，使用翻译器模式生成简体中文字幕。
-- 已放宽 TimedText 响应匹配条件，提升字幕响应脚本的命中率。
-- 视频本身需要提供官方字幕或自动生成字幕。
-
-## 更新日志
-
-### v2.0.0 · 2026-07-16
-
-- 字幕模块升级至 v6。
-- 放宽 TimedText 响应匹配条件。
-- 修复字幕响应脚本未执行的问题。
-- 修正与去广告模块同时使用时的模块顺序说明。
-
-### v1.0.0 · 2026-07-14
-
-- 首次发布 YouTube 自动简中双语字幕模块。
-- 使用翻译器模式生成简体中文字幕。
-- 增加 BoxJS 推荐设置和 Surge 云端订阅地址。
+本项目保留并注明所使用上游开源逻辑的许可与来源，详见 `THIRD_PARTY_NOTICES.md`。运行文件和订阅路径均由本仓库独立托管。
