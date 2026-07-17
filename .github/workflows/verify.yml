@@ -21,4 +21,4 @@ jobs:
       - run: npm run build
       - run: npm test
       - name: Confirm generated bundles are committed
-        run: git diff --exit-code -- request.youtube-standalone-v14.bundle.js response.youtube-standalone-v14.bundle.js Translate.response.youtube-fix-v15.bundle.js
+        run: git diff --exit-code -- request.youtube-standalone-v15.bundle.js response.youtube-standalone-v15.bundle.js Translate.response.youtube-fix-v15.bundle.js
