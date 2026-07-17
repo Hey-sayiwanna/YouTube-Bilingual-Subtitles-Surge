@@ -1,82 +1,64 @@
 # YouTube Bilingual Subtitles for Surge
 
-独立维护的 YouTube 自动简中双语字幕模块。当前版本为 **v17**，默认原文在上、简体中文在下。
+这是一个独立维护的 YouTube 自动简中双语字幕模块，默认原文在上、简体中文在下，支持 iPhone 与 iPad。
 
-## Surge 订阅地址
+感谢 [DualSubs](https://dualsubs.github.io/index.html) 开放源代码和字幕处理思路，让这个项目有了最初的基础。
+
+也感谢 **GPT-5.6 sol** 模型，让我有机会亲手创造自己喜欢、真正适合自己使用的东西。
+
+> [!IMPORTANT]
+> 本项目已经独立托管运行文件，不依赖 DualSubs Release、BoxJs 或 `Universal` 仓库中的旧字幕脚本。
+
+## 一、模块订阅地址
 
 ```text
 https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/YouTube.Bilingual.sgmodule
 ```
 
-这个路径保持不变，后续更新继续使用同一个地址。
+这个地址会保持不变，后续在 Surge 中点击“立即更新”即可。
 
-## 独立性
+## 二、当前版本
 
-- 所有 `script-path` 均指向本仓库。
-- 不依赖 DualSubs Release 或 `Universal` 仓库。
-- TimedText 翻译响应不读取 BoxJs。
-- Player/GetWatch 使用独立的 `Hey-sayiwanna` 存储命名空间，不读取旧 `@DualSubs` 设置。
-- 保留 `DualSubs.AutoZH.*` 规则名称，仅用于兼容已有 Surge 配置。
+- **v18**：以稳定的 v16 为基础，只加快自动生成字幕的翻译请求。
+- 修复 iPad 自动字幕等待过久，以及字幕正文换行造成的条目错位。
+- 作者上传或官方字幕继续使用 v16 原有逻辑。
 
-## v17 修复
+## 三、安装
 
-- 修复 iPadOS 18 上自动生成字幕偶发“字幕错误”：抓包确认 YouTube 会在约 7.5 秒取消仍未完成的 TimedText 请求。
-- 不再按固定 120 句组成超长 Google 翻译 URL，改为按 URL 编码后的实际长度拆成不超过 2400 字符的小批次。
-- 最多 6 批并发翻译，并设置 6.0 秒总截止时间；正常完成不会等待到截止时间。
-- 截止时已完成的批次立即写回，未完成句子保留原文；若一批都未完成则返回完整原字幕，避免整条字幕报错。
-- 两行模式、自动字幕长句拆分和官方字幕处理保持 v16 行为不变。
-- v15、v16 运行文件继续保留，v17 使用全新文件名避免 Surge 缓存。
+1. 删除 Surge 中原来的 DualSubs YouTube 模块，以及本项目的旧版本模块，避免重复执行。
+2. 使用上面的订阅地址安装本模块。
+3. 开启模块与 Surge MITM，安装并完全信任 Surge CA 证书，同时屏蔽 QUIC。
+4. 完全退出 YouTube 后重新打开，在字幕菜单中选择视频的原语言字幕。
 
-## v16 修复
+> [!NOTE]
+> BoxJs 可以保留，但本模块不会读取其中的 DualSubs 设置。
 
-- 自动生成字幕采用“句意优先、时间兜底”的长句拆分：优先按标点和空格断句，无标点时按屏幕视觉宽度安全拆分。
-- 中日韩字符按双宽、拉丁字符按单宽计算，避免原文或翻译因长句自动折行后挤在同一字幕框内。
-- 拆分后的时间段首尾相接，并把 ASR 原始重叠时长截到下一条字幕开始前。
-- 每个时间段仍只显示“原文 + 简中”两个逻辑行；官方或作者字幕完全不走拆分逻辑。
-- 保留完整 v15 运行文件作为兼容基线，v16 使用全新文件名避免 Surge 缓存。
+## 四、项目说明
 
-## v15 基线
+- 仅对 `kind=asr` 自动生成字幕使用更小的翻译请求，减少 iPad 等待超时。
+- 自动字幕保持“原文 + 简中”两个逻辑行，并处理长句重叠问题。
+- 作者上传或官方字幕保留 v16 的翻译、逐行兜底和写回方式。
+- 所有运行地址均指向本仓库，`DualSubs.AutoZH.*` 只作为 Surge 规则兼容名称保留。
 
-- v15 作为独立项目的首个正式基线；仓库不保留无人使用的 v14 运行文件，后续版本从 v15 起保留兼容文件。
-- 只对 `kind=asr` 自动生成字幕关闭 YouTube 的滚动保留窗口，避免上一句翻译残留后形成三行。
-- 韩语、英语、日语等所有自动生成字幕统一固定为“原文 + 简中”两个逻辑行。
-- 作者上传或官方提供的字幕不走这项处理，原有显示方式保持不变。
-- 兼容 YouTube iOS 的 `srv3` ASR 分段字幕。
-- 保留有效 `<s>` 节点及 `rc>=2`，避免双语第二行被裁掉。
-- 原文分段按原始空格拼接，避免产生双空格。
-- Google 自动检测源语言并翻译为简体中文。
-- 翻译数量不匹配时自动切换逐行重试。
-- 使用独立文件名避免 Surge 脚本缓存。
+## 五、相关文件
 
-## 安装
+| 文件 | 作用 |
+| --- | --- |
+| `YouTube.Bilingual.sgmodule` | Surge 模块安装入口 |
+| `force_translate_request.js` | 为 YouTube 字幕请求启用简中翻译 |
+| `src/YouTube.Translate.response.js` | 字幕翻译与双语写回源码 |
+| `src/function/youtubeTimedText.mjs` | 自动字幕两行显示与长句处理 |
+| `request.youtube-standalone-v18.bundle.js` | YouTube Player 请求脚本 |
+| `response.youtube-standalone-v18.bundle.js` | YouTube Player / GetWatch 响应脚本 |
+| `Translate.response.youtube-fix-v18.bundle.js` | 从本仓库源码构建的字幕响应脚本 |
+| `tests/` | 自动字幕、官方字幕和模块独立性测试 |
 
-1. 在 Surge 中停用或删除旧 v6、v12、v13 和其他重复的 YouTube 字幕模块。
-2. 使用上面的稳定订阅地址安装。
-3. 开启模块与 MITM，确认 Surge CA 证书已安装并完全信任。
-4. 完全退出 YouTube 后重新打开，并选择视频的原语言字幕。
+## 六、更新与排查
 
-BoxJs 可以保留，但本模块不会读取其中的旧 DualSubs 配置。
+1. 在 Surge 模块页面确认当前显示为 **v18**。
+2. 更新模块后完全退出并重新打开 YouTube。
+3. 如果仍有问题，在 Surge 最近请求中确认 TimedText 请求显示 `Modified by script`，并保存对应日志或抓包。
 
-## 项目结构
+## 七、开源说明
 
-- `YouTube.Bilingual.sgmodule`：稳定 Surge 订阅入口。
-- `force_translate_request.js`：为 TimedText 请求添加 `subtype=Translate`。
-- `src/YouTube.Translate.response.js`：字幕翻译与 srv3 写回源码。
-- `src/function/youtubeTimedText.mjs`：YouTube XML 读取与双语写回逻辑。
-- `src/function/translationScheduler.mjs`：按 URL 长度分批、并发执行和截止回退逻辑。
-- `request.youtube-standalone-v17.bundle.js`：独立 Player 请求脚本。
-- `response.youtube-standalone-v17.bundle.js`：独立 Player/GetWatch 响应脚本。
-- `Translate.response.youtube-fix-v17.bundle.js`：从本仓库源码构建的字幕响应脚本。
-- `tests/`：抓包样本结构、编译 Bundle 和独立性测试。
-
-## 本地构建与测试
-
-```bash
-npm ci
-npm run build
-npm test
-```
-
-## 开源说明
-
-本项目保留并注明所使用上游开源逻辑的许可与来源，详见 `THIRD_PARTY_NOTICES.md`。运行文件和订阅路径均由本仓库独立托管。
+本项目保留并注明所使用上游开源逻辑的许可与来源，详见 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)。运行文件和订阅路径均由本仓库独立托管。

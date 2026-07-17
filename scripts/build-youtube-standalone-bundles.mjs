@@ -1,8 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 const bundles = [
-	["vendor/dualsubs-youtube-v1.5.11/request.bundle.js", "request.youtube-standalone-v17.bundle.js"],
-	["vendor/dualsubs-youtube-v1.5.11/response.bundle.js", "response.youtube-standalone-v17.bundle.js"],
+	["vendor/dualsubs-youtube-v1.5.11/request.bundle.js", "request.youtube-standalone-v18.bundle.js"],
+	["vendor/dualsubs-youtube-v1.5.11/response.bundle.js", "response.youtube-standalone-v18.bundle.js"],
 ];
 
 for (const [sourcePath, outputPath] of bundles) {

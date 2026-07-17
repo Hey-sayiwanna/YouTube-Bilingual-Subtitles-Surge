@@ -7,20 +7,21 @@ import {
 	splitYouTubeASRLongParagraphs,
 	writeYouTubeTimedTextParagraph,
 } from "./function/youtubeTimedText.mjs";
-import { translateBatchesWithinBudget } from "./function/translationScheduler.mjs";
 
 const SETTINGS = Object.freeze({
 	Source: "AUTO",
 	Target: "ZH-HANS",
 	ShowOnly: false,
 	Position: "Forward",
-	MaxEncodedLength: 2400,
-	Concurrency: 6,
-	BudgetMs: 6000,
+	Method: "Part",
+	Times: 3,
+	Interval: 500,
+	Exponential: true,
+	ASRMaxEncodedLength: 2400,
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 17 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 18 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -30,7 +31,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const requestURL = new URL($request.url);
 	const isAutomaticCaption = requestURL.searchParams.get("kind") === "asr";
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 17 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 18 skipped: response is not timedtext XML");
 		return;
 	}
 
@@ -50,41 +51,14 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	Console.info(`XML fullText count: ${fullText.length}`);
 	Console.info(`YouTube srv3 segmented paragraph count: ${parsedParagraphs.filter(item => item.segmented).length}`);
 
-	const translationResult = await translateBatchesWithinBudget(
-		fullText,
-		batch => retry(() => googleTranslate(batch), 1, 150, false),
-		{
-			maxEncodedLength: SETTINGS.MaxEncodedLength,
-			concurrency: SETTINGS.Concurrency,
-			budgetMs: SETTINGS.BudgetMs,
-		},
-	);
-	const translation = translationResult.translations.map(normalizeTranslation);
-	const translatedRows = translation.filter(text => text.trim()).length;
-	Console.info(`Google batch plan: rows=${fullText.length}, batches=${translationResult.batches.length}, maxEncoded=${SETTINGS.MaxEncodedLength}, concurrency=${SETTINGS.Concurrency}, budget=${SETTINGS.BudgetMs}ms`);
-	Console.info(`Google batch result: completed=${translationResult.completedBatches}/${translationResult.batches.length}, failed=${translationResult.failedBatches}, timedOut=${translationResult.timedOut}, elapsed=${translationResult.elapsedMs}ms`);
-	Console.info(`XML translation count: ${translatedRows}/${translation.length}`);
-	translationResult.errors.slice(0, 3).forEach(error => Console.warn(`Google translation batch failed: ${error}`));
-	if (translation.length !== fullText.length) {
-		Console.warn(`YouTube XML translation mismatch: origin=${fullText.length}, translated=${translation.length}`);
+	let translation = await Translator(SETTINGS.Method, fullText, isAutomaticCaption);
+	Console.info(`XML translation count: ${translation?.length ?? 0}`);
+	if (!Array.isArray(translation) || translation.length !== fullText.length) {
+		Console.warn(`YouTube XML translation mismatch: origin=${fullText.length}, translated=${translation?.length ?? 0}; retry with Row`);
+		translation = await Translator("Row", fullText, isAutomaticCaption);
 	}
-
-	const fallback = translationResult.completedBatches === 0
-		? "original"
-		: translationResult.completedBatches < translationResult.batches.length ? "partial" : "none";
-	setDiagnosticHeaders({
-		isAutomaticCaption,
-		originalXMLLength,
-		modifiedXMLLength: originalXMLLength,
-		fallback,
-		completedBatches: translationResult.completedBatches,
-		totalBatches: translationResult.batches.length,
-	});
-	if (fallback === "original") {
-		$response.body = originalXML;
-		Console.warn("YouTube translation deadline fallback: original subtitles");
-		return;
-	}
+	if (!Array.isArray(translation)) translation = [];
+	translation = fullText.map((_, index) => normalizeTranslation(translation[index]));
 
 	paragraphs.forEach((paragraph, index) => {
 		writeYouTubeTimedTextParagraph(paragraph, fullText[index], translation[index], {
@@ -95,28 +69,39 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	});
 
 	$response.body = XML.stringify(body);
-	setDiagnosticHeaders({
-		isAutomaticCaption,
-		originalXMLLength,
-		modifiedXMLLength: $response.body.length,
-		fallback,
-		completedBatches: translationResult.completedBatches,
-		totalBatches: translationResult.batches.length,
-	});
+	$response.headers = $response.headers ?? {};
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "18";
+	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
+	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "fixed-two-lines-split-long-cues" : "unchanged";
+	$response.headers["X-Hey-Sayiwanna-XML-Original-Length"] = String(originalXMLLength);
+	$response.headers["X-Hey-Sayiwanna-XML-Modified-Length"] = String($response.body.length);
 	Console.info(`XML write-back length: origin=${originalXMLLength}, modified=${$response.body.length}`);
 	Console.info("XML write-back finished");
 })()
 	.catch(error => Console.error(error))
 	.finally(() => done($response));
 
+async function Translator(method = "Part", text = [], isAutomaticCaption = false) {
+	Console.info(`YouTube standalone translator: method=${method}, source=${SETTINGS.Source}, target=${SETTINGS.Target}`);
+	if (method === "Row") {
+		return await Promise.all(text.map(row => retry(() => googleTranslate(row), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential)));
+	}
+	const parts = isAutomaticCaption
+		? chunkByEncodedLength(text, SETTINGS.ASRMaxEncodedLength)
+		: chunk(text, 120);
+	if (isAutomaticCaption) {
+		Console.info(`YouTube ASR translation batches: rows=${text.length}, batches=${parts.length}, maxEncoded=${SETTINGS.ASRMaxEncodedLength}`);
+	}
+	return await Promise.all(parts.map(part => retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential))).then(part => part.flat(Number.POSITIVE_INFINITY));
+}
+
 async function googleTranslate(text) {
 	text = Array.isArray(text) ? text : [text];
 	const request = {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
-		timeout: 3,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/17",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/18",
 			Referer: "https://translate.google.com",
 		},
 	};
@@ -127,7 +112,7 @@ async function googleTranslate(text) {
 	else if (Array.isArray(body)) translated = body.join("");
 	else if (Array.isArray(body?.sentences)) translated = body.sentences.map(item => item?.trans ?? "").join("");
 	else throw new Error("Google Translate returned an unsupported response");
-	return translated.split(/\r\n?|\n/);
+	return translated.split(/\r/);
 }
 
 function normalizeTranslation(text) {
@@ -136,15 +121,26 @@ function normalizeTranslation(text) {
 	return typeof text === "string" ? text : String(text);
 }
 
-function setDiagnosticHeaders({ isAutomaticCaption, originalXMLLength, modifiedXMLLength, fallback, completedBatches, totalBatches }) {
-	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "17";
-	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
-	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "fixed-two-lines-split-long-cues" : "unchanged";
-	$response.headers["X-Hey-Sayiwanna-Translation-Fallback"] = fallback;
-	$response.headers["X-Hey-Sayiwanna-Translation-Batches"] = `${completedBatches}/${totalBatches}`;
-	$response.headers["X-Hey-Sayiwanna-XML-Original-Length"] = String(originalXMLLength);
-	$response.headers["X-Hey-Sayiwanna-XML-Modified-Length"] = String(modifiedXMLLength);
+function chunk(source, length) {
+	let index = 0;
+	const target = [];
+	while (index < source.length) target.push(source.slice(index, (index += length)));
+	return target;
+}
+
+function chunkByEncodedLength(source, maximumLength) {
+	const target = [];
+	let current = [];
+	for (const row of source) {
+		const candidate = [...current, row];
+		if (current.length && encodeURIComponent(candidate.join("\r")).length > maximumLength) {
+			target.push(current);
+			current = [];
+		}
+		current.push(row);
+	}
+	if (current.length) target.push(current);
+	return target;
 }
 
 async function retry(fn, retriesLeft = 3, interval = 500, exponential = true) {
