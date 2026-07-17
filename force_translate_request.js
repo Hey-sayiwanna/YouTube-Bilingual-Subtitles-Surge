@@ -6,7 +6,7 @@ if (
   url.pathname === "/api/timedtext"
 ) {
   /*
-   * 只添加 DualSubs 翻译标记。
+   * 只添加本项目使用的 Translate 标记。
    *
    * 不删除、不修改 YouTube 原有参数：
    * lang=ko / lang=en

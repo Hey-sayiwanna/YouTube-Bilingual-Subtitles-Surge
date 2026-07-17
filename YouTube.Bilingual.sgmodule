@@ -1,53 +1,29 @@
-#!name=YouTube 自动简中双语字幕 v12
-#!desc=使用固定 Release 修复 srv3 返回端字幕合成；原文在上，简中在下
-#!author=DualSubs / compatibility build
-#!homepage=https://dualsubs.github.io/guide/youtube
-#!icon=https://github.com/DualSubs/YouTube/raw/main/src/assets/icon_rounded.png
+#!name=YouTube 自动简中双语字幕 v14
+#!desc=独立版 YouTube srv3 ASR 双语字幕；原文在上，简中在下；不读取旧 BoxJs 配置
+#!author=Hey-sayiwanna
+#!homepage=https://github.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge
+#!icon=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/src/assets/icon_rounded.png
 #!category=YouTube
-#!version=12.0
+#!version=14.0
 
 [Script]
 
-# ==================================================
-# YouTube 网页端 Player 请求
-# ==================================================
-DualSubs.AutoZH.Player.request.json = type=http-request, pattern=^https?:\/\/(www|m|tv)\.youtube\.com\/youtubei\/v1\/player(\?.+)?$, requires-body=1, max-size=-1, engine=webview, script-path=https://github.com/DualSubs/YouTube/releases/download/v1.5.11/request.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
+# 保留 DualSubs.AutoZH 规则名称，仅用于兼容现有 Surge 配置。
+# 所有运行文件、配置和存储命名空间均由本仓库独立维护。
 
-# ==================================================
-# YouTube 网页端 Player 响应
-# ==================================================
-DualSubs.AutoZH.Player.response.json = type=http-response, pattern=^https?:\/\/(www|m|tv)\.youtube\.com\/youtubei\/v1\/player(\?.+)?$, requires-body=1, max-size=-1, engine=webview, script-path=https://github.com/DualSubs/YouTube/releases/download/v1.5.11/response.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
+DualSubs.AutoZH.Player.request.json = type=http-request, pattern=^https?:\/\/(www|m|tv)\.youtube\.com\/youtubei\/v1\/player(\?.+)?$, requires-body=1, max-size=-1, engine=webview, script-path=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/request.youtube-standalone-v14.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
 
-# ==================================================
-# YouTube iPhone / iPad Player 请求
-# ==================================================
-DualSubs.AutoZH.Player.request.proto = type=http-request, pattern=^https?:\/\/youtubei\.googleapis\.com\/youtubei\/v1\/player(\?.+)?$, requires-body=1, max-size=-1, binary-body-mode=1, engine=webview, script-path=https://github.com/DualSubs/YouTube/releases/download/v1.5.11/request.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
+DualSubs.AutoZH.Player.response.json = type=http-response, pattern=^https?:\/\/(www|m|tv)\.youtube\.com\/youtubei\/v1\/player(\?.+)?$, requires-body=1, max-size=-1, engine=webview, script-path=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/response.youtube-standalone-v14.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
 
-# ==================================================
-# YouTube iPhone / iPad Player 响应
-# ==================================================
-DualSubs.AutoZH.Player.response.proto = type=http-response, pattern=^https?:\/\/youtubei\.googleapis\.com\/youtubei\/v1\/player(\?.+)?$, requires-body=1, max-size=-1, binary-body-mode=1, engine=webview, script-path=https://github.com/DualSubs/YouTube/releases/download/v1.5.11/response.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
+DualSubs.AutoZH.Player.request.proto = type=http-request, pattern=^https?:\/\/youtubei\.googleapis\.com\/youtubei\/v1\/player(\?.+)?$, requires-body=1, max-size=-1, binary-body-mode=1, engine=webview, script-path=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/request.youtube-standalone-v14.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
 
-# ==================================================
-# YouTube iPhone / iPad get_watch 响应
-# ==================================================
-DualSubs.AutoZH.GetWatch.response.proto = type=http-response, pattern=^https?:\/\/youtubei\.googleapis\.com\/youtubei\/v1\/get_watch(\?.+)?$, requires-body=1, max-size=-1, binary-body-mode=1, engine=webview, script-path=https://github.com/DualSubs/YouTube/releases/download/v1.5.11/response.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
+DualSubs.AutoZH.Player.response.proto = type=http-response, pattern=^https?:\/\/youtubei\.googleapis\.com\/youtubei\/v1\/player(\?.+)?$, requires-body=1, max-size=-1, binary-body-mode=1, engine=webview, script-path=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/response.youtube-standalone-v14.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
 
-# ==================================================
-# TimedText 字幕请求
-# 兼容：
-# 1. 自动生成字幕：kind=asr
-# 2. 人工命名字幕：name=字幕轨道ID
-#
-# 不修改原有字幕参数，只添加 subtype=Translate
-# ==================================================
+DualSubs.AutoZH.GetWatch.response.proto = type=http-response, pattern=^https?:\/\/youtubei\.googleapis\.com\/youtubei\/v1\/get_watch(\?.+)?$, requires-body=1, max-size=-1, binary-body-mode=1, engine=webview, script-path=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/response.youtube-standalone-v14.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=WARN
+
 DualSubs.AutoZH.TimedText.request = type=http-request, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext(\?.+)?$, script-path=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/force_translate_request.js
 
-# ==================================================
-# TimedText 翻译响应
-# 原文在上，简体中文在下
-# ==================================================
-DualSubs.AutoZH.TimedText.Translate.response = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext\?.*subtype=Translate.*$, requires-body=1, max-size=-1, timeout=60, engine=webview, script-path=https://github.com/Hey-sayiwanna/Universal/releases/download/v1.0.0-youtube-fix1/Translate.response.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=ALL
+DualSubs.AutoZH.TimedText.Translate.response = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext\?.*subtype=Translate.*$, requires-body=1, max-size=-1, timeout=60, engine=webview, debug=true, script-path=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/Translate.response.youtube-fix-v14.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=ALL
 
 [MITM]
 hostname = %APPEND% www.youtube.com, m.youtube.com, tv.youtube.com, youtubei.googleapis.com
