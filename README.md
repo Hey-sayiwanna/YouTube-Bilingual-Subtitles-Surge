@@ -1,6 +1,6 @@
 # YouTube Bilingual Subtitles for Surge
 
-独立维护的 YouTube 自动简中双语字幕模块。当前版本为 **v16**，默认原文在上、简体中文在下。
+独立维护的 YouTube 自动简中双语字幕模块。当前版本为 **v17**，默认原文在上、简体中文在下。
 
 ## Surge 订阅地址
 
@@ -17,6 +17,15 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 - TimedText 翻译响应不读取 BoxJs。
 - Player/GetWatch 使用独立的 `Hey-sayiwanna` 存储命名空间，不读取旧 `@DualSubs` 设置。
 - 保留 `DualSubs.AutoZH.*` 规则名称，仅用于兼容已有 Surge 配置。
+
+## v17 修复
+
+- 修复 iPadOS 18 上自动生成字幕偶发“字幕错误”：抓包确认 YouTube 会在约 7.5 秒取消仍未完成的 TimedText 请求。
+- 不再按固定 120 句组成超长 Google 翻译 URL，改为按 URL 编码后的实际长度拆成不超过 2400 字符的小批次。
+- 最多 6 批并发翻译，并设置 6.0 秒总截止时间；正常完成不会等待到截止时间。
+- 截止时已完成的批次立即写回，未完成句子保留原文；若一批都未完成则返回完整原字幕，避免整条字幕报错。
+- 两行模式、自动字幕长句拆分和官方字幕处理保持 v16 行为不变。
+- v15、v16 运行文件继续保留，v17 使用全新文件名避免 Surge 缓存。
 
 ## v16 修复
 
@@ -54,9 +63,10 @@ BoxJs 可以保留，但本模块不会读取其中的旧 DualSubs 配置。
 - `force_translate_request.js`：为 TimedText 请求添加 `subtype=Translate`。
 - `src/YouTube.Translate.response.js`：字幕翻译与 srv3 写回源码。
 - `src/function/youtubeTimedText.mjs`：YouTube XML 读取与双语写回逻辑。
-- `request.youtube-standalone-v16.bundle.js`：独立 Player 请求脚本。
-- `response.youtube-standalone-v16.bundle.js`：独立 Player/GetWatch 响应脚本。
-- `Translate.response.youtube-fix-v16.bundle.js`：从本仓库源码构建的字幕响应脚本。
+- `src/function/translationScheduler.mjs`：按 URL 长度分批、并发执行和截止回退逻辑。
+- `request.youtube-standalone-v17.bundle.js`：独立 Player 请求脚本。
+- `response.youtube-standalone-v17.bundle.js`：独立 Player/GetWatch 响应脚本。
+- `Translate.response.youtube-fix-v17.bundle.js`：从本仓库源码构建的字幕响应脚本。
 - `tests/`：抓包样本结构、编译 Bundle 和独立性测试。
 
 ## 本地构建与测试
