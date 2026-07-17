@@ -1,6 +1,6 @@
 # YouTube Bilingual Subtitles for Surge
 
-独立维护的 YouTube 自动简中双语字幕模块。当前版本为 **v14**，默认原文在上、简体中文在下。
+独立维护的 YouTube 自动简中双语字幕模块。当前版本为 **v15**，默认原文在上、简体中文在下。
 
 ## Surge 订阅地址
 
@@ -18,8 +18,11 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 - Player/GetWatch 使用独立的 `Hey-sayiwanna` 存储命名空间，不读取旧 `@DualSubs` 设置。
 - 保留 `DualSubs.AutoZH.*` 规则名称，仅用于兼容已有 Surge 配置。
 
-## v14 修复
+## v15 修复
 
+- 只对 `kind=asr` 自动生成字幕关闭 YouTube 的滚动保留窗口，避免上一句翻译残留后形成三行。
+- 韩语、英语、日语等所有自动生成字幕统一固定为“原文 + 简中”两个逻辑行。
+- 作者上传或官方提供的字幕不走这项处理，原有显示方式保持不变。
 - 兼容 YouTube iOS 的 `srv3` ASR 分段字幕。
 - 保留有效 `<s>` 节点及 `rc>=2`，避免双语第二行被裁掉。
 - 原文分段按原始空格拼接，避免产生双空格。
@@ -44,7 +47,7 @@ BoxJs 可以保留，但本模块不会读取其中的旧 DualSubs 配置。
 - `src/function/youtubeTimedText.mjs`：YouTube XML 读取与双语写回逻辑。
 - `request.youtube-standalone-v14.bundle.js`：独立 Player 请求脚本。
 - `response.youtube-standalone-v14.bundle.js`：独立 Player/GetWatch 响应脚本。
-- `Translate.response.youtube-fix-v14.bundle.js`：从本仓库源码构建的字幕响应脚本。
+- `Translate.response.youtube-fix-v15.bundle.js`：从本仓库源码构建的字幕响应脚本。
 - `tests/`：抓包样本结构、编译 Bundle 和独立性测试。
 
 ## 本地构建与测试
