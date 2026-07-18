@@ -41,7 +41,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 | `src/function/youtubeTimedText.mjs` | 自动字幕两行显示与长句处理 |
 | `request.youtube-standalone-v18.bundle.js` | YouTube Player 请求脚本 |
 | `response.youtube-standalone-v18.bundle.js` | YouTube Player / GetWatch 响应脚本 |
-| `Translate.response.youtube-fix-v*.bundle.js` | 从本仓库源码构建的字幕响应脚本 |
+| `Translate.response.youtube-fix-v18.bundle.js` | 从本仓库源码构建的字幕响应脚本 |
 | `tests/` | 自动字幕、官方字幕和模块独立性测试 |
 
 ## 开源说明
