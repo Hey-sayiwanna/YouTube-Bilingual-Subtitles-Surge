@@ -9,7 +9,7 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
 	entry: {
-		"Translate.response.youtube-fix-v19": "./src/YouTube.Translate.response.js",
+		"Translate.response.youtube-fix-v20": "./src/YouTube.Translate.response.js",
 	},
 	output: {
 		path: projectRoot,

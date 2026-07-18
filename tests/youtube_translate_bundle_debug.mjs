@@ -6,10 +6,13 @@ const longSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><
 const largeSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 231 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>자동 생성 자막 ${index + 1}: 화면 문장입니다.</s></p>`).join("")}</body></timedtext>`;
 const multilineSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 535 }, (_, index) => `<p t="${index * 2000}" d="1900">자동 자막 ${index + 1}${index % 3 === 0 ? "\n본문 두 번째 줄" : ""}</p>`).join("")}</body></timedtext>`;
 const ipadMergedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 248 }, (_, index) => `<p t="${index * 8000}" d="7900" w="1"><s>${index < 126 ? "가".repeat(24) : `짧은 자동 자막 ${index + 1}`}</s></p>`).join("")}</body></timedtext>`;
+const hugeSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 3711 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>자동 자막 ${index + 1}</s></p>`).join("")}</body></timedtext>`;
 const largeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 121 }, (_, index) => `<p t="${index * 2000}" d="1900">Official caption ${index + 1}</p>`).join("")}</body></timedtext>`;
 
-async function runBundle({ url, translation, testName, body = rollingSrv3 }) {
+async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0 }) {
 	const translateRequestURLs = [];
+	let activeRequests = 0;
+	let maximumActiveRequests = 0;
 	globalThis.$environment = { "surge-version": "5.0" };
 	globalThis.$script = { startTime: Date.now() / 1000 };
 	globalThis.$request = { method: "GET", url, headers: {} };
@@ -21,9 +24,20 @@ async function runBundle({ url, translation, testName, body = rollingSrv3 }) {
 	globalThis.$httpClient = {
 		get(request, callback) {
 			translateRequestURLs.push(request.url);
+			if (activeRequests >= concurrentRequestLimit) {
+				callback(new Error("Excessive concurrent requests"));
+				return;
+			}
+			activeRequests += 1;
+			maximumActiveRequests = Math.max(maximumActiveRequests, activeRequests);
 			const sourceRows = new URL(request.url).searchParams.get("q").split(/\r/);
 			const translated = typeof translation === "function" ? translation(sourceRows) : translation;
-			callback(null, { status: 200, headers: {} }, JSON.stringify([[[translated, "source", null, null]], null, "ko"]));
+			const respond = () => {
+				activeRequests -= 1;
+				callback(null, { status: 200, headers: {} }, JSON.stringify([[[translated, "source", null, null]], null, "ko"]));
+			};
+			if (responseDelay > 0) setTimeout(respond, responseDelay);
+			else respond();
 		},
 	};
 
@@ -33,7 +47,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3 }) {
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v19.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../Translate.response.youtube-fix-v20.bundle.js?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
@@ -42,7 +56,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3 }) {
 		}),
 	]);
 	clearTimeout(timeout);
-	return { output, translateRequestURL: translateRequestURLs.at(-1), translateRequestURLs };
+	return { output, translateRequestURL: translateRequestURLs.at(-1), translateRequestURLs, maximumActiveRequests };
 }
 
 const automatic = await runBundle({
@@ -54,7 +68,7 @@ const automatic = await runBundle({
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "19");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "20");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "fixed-two-lines-split-long-cues");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
@@ -85,7 +99,7 @@ const official = await runBundle({
 	testName: "official",
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "19");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "20");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
 const officialBody = XML.parse(official.output.body).timedtext.body;
 assert.notEqual(officialBody.w, undefined);
@@ -97,8 +111,10 @@ const capturedLike = await runBundle({
 	translation: rows => rows.map((_, index) => `并发翻译${index + 1}`).join("\r"),
 	testName: "ipad-large-automatic",
 	body: largeSrv3,
+	responseDelay: 2,
 });
 assert.ok(capturedLike.translateRequestURLs.length > 2);
+assert.ok(capturedLike.maximumActiveRequests > 6, "normal automatic captions must keep the original direct scheduling path");
 assert.ok(capturedLike.translateRequestURLs.every(url => {
 	const query = new URL(url).searchParams.get("q");
 	return encodeURIComponent(query).length <= 2400;
@@ -134,6 +150,18 @@ assert.equal(XML.parse(ipadMergedMismatch.output.body).timedtext.body.p.length, 
 assert.equal((ipadMergedMismatch.output.body.match(/&#x000A;局部重试翻译/gu) ?? []).length, 374);
 assert.ok(ipadMergedMismatch.translateRequestURLs.length < 80, "a single bad batch must not retry every subtitle row");
 
+const hugeAutomatic = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=huge&kind=asr&lang=ko&format=srv3&subtype=Translate",
+	translation: rows => rows.map((_, index) => `超长视频翻译${index + 1}`).join("\r"),
+	testName: "automatic-bounded-concurrency",
+	body: hugeSrv3,
+	concurrentRequestLimit: 6,
+	responseDelay: 2,
+});
+assert.equal((hugeAutomatic.output.body.match(/&#x000A;超长视频翻译/gu) ?? []).length, 3711);
+assert.ok(hugeAutomatic.translateRequestURLs.length > 60);
+assert.ok(hugeAutomatic.maximumActiveRequests <= 6, `automatic translation concurrency must stay bounded, received ${hugeAutomatic.maximumActiveRequests}`);
+
 const largeOfficial = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=official&lang=en&format=srv3&subtype=Translate",
 	translation: rows => rows.map((_, index) => `官方翻译${index + 1}`).join("\r"),
@@ -154,5 +182,6 @@ console.log(JSON.stringify({
 	ipadLargeASRSmallBatching: "passed",
 	automaticMultilineRowsPreserved: "passed",
 	ipadMergedBatchMismatchRecoveredLocally: "passed",
+	hugeAutomaticCaptionsUseBoundedConcurrency: "passed",
 	officialV16BatchingPreserved: "passed",
 }, null, 2));

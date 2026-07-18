@@ -18,10 +18,12 @@ const SETTINGS = Object.freeze({
 	Interval: 500,
 	Exponential: true,
 	ASRMaxEncodedLength: 2400,
+	ASRMaxConcurrency: 6,
+	ASRQueueThreshold: 24,
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 19 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 20 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -31,7 +33,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const requestURL = new URL($request.url);
 	const isAutomaticCaption = requestURL.searchParams.get("kind") === "asr";
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 19 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 20 skipped: response is not timedtext XML");
 		return;
 	}
 
@@ -70,7 +72,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "19";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "20";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "fixed-two-lines-split-long-cues" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-XML-Original-Length"] = String(originalXMLLength);
@@ -90,13 +92,18 @@ async function Translator(method = "Part", text = [], isAutomaticCaption = false
 		? chunkByEncodedLength(text, SETTINGS.ASRMaxEncodedLength)
 		: chunk(text, 120);
 	if (isAutomaticCaption) {
-		Console.info(`YouTube ASR translation batches: rows=${text.length}, batches=${parts.length}, maxEncoded=${SETTINGS.ASRMaxEncodedLength}`);
-		return await Promise.all(parts.map((part, index) => translateAutomaticBatch(part, `${index + 1}/${parts.length}`))).then(part => part.flat(Number.POSITIVE_INFINITY));
+		const useBoundedQueue = parts.length > SETTINGS.ASRQueueThreshold;
+		Console.info(`YouTube ASR translation batches: rows=${text.length}, batches=${parts.length}, maxEncoded=${SETTINGS.ASRMaxEncodedLength}, scheduler=${useBoundedQueue ? `bounded-${SETTINGS.ASRMaxConcurrency}` : "direct"}`);
+		if (useBoundedQueue) {
+			const translatedParts = await mapWithConcurrency(parts, SETTINGS.ASRMaxConcurrency, (part, index) => translateAutomaticBatch(part, `${index + 1}/${parts.length}`, true));
+			return translatedParts.flat(Number.POSITIVE_INFINITY);
+		}
+		return await Promise.all(parts.map((part, index) => translateAutomaticBatch(part, `${index + 1}/${parts.length}`, false))).then(part => part.flat(Number.POSITIVE_INFINITY));
 	}
 	return await Promise.all(parts.map(part => retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential))).then(part => part.flat(Number.POSITIVE_INFINITY));
 }
 
-async function translateAutomaticBatch(part, label) {
+async function translateAutomaticBatch(part, label, useBoundedQueue) {
 	const translation = await retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
 	if (translation.length === part.length) return translation;
 	Console.warn(`YouTube ASR batch mismatch: batch=${label}, expected=${part.length}, received=${translation.length}; retry smaller`);
@@ -104,7 +111,12 @@ async function translateAutomaticBatch(part, label) {
 
 	const middle = Math.ceil(part.length / 2);
 	const halves = [part.slice(0, middle), part.slice(middle)];
-	return await Promise.all(halves.map((half, index) => translateAutomaticBatch(half, `${label}.${index + 1}`))).then(result => result.flat(Number.POSITIVE_INFINITY));
+	if (useBoundedQueue) {
+		const first = await translateAutomaticBatch(halves[0], `${label}.1`, true);
+		const second = await translateAutomaticBatch(halves[1], `${label}.2`, true);
+		return [...first, ...second];
+	}
+	return await Promise.all(halves.map((half, index) => translateAutomaticBatch(half, `${label}.${index + 1}`, false))).then(result => result.flat(Number.POSITIVE_INFINITY));
 }
 
 async function googleTranslate(text) {
@@ -113,7 +125,7 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/19",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/20",
 			Referer: "https://translate.google.com",
 		},
 	};
@@ -152,6 +164,21 @@ function chunkByEncodedLength(source, maximumLength) {
 		current.push(row);
 	}
 	if (current.length) target.push(current);
+	return target;
+}
+
+async function mapWithConcurrency(source, maximumConcurrency, mapper) {
+	const target = new Array(source.length);
+	let nextIndex = 0;
+	const workerCount = Math.min(Math.max(1, maximumConcurrency), source.length);
+	const workers = Array.from({ length: workerCount }, async () => {
+		while (nextIndex < source.length) {
+			const index = nextIndex;
+			nextIndex += 1;
+			target[index] = await mapper(source[index], index);
+		}
+	});
+	await Promise.all(workers);
 	return target;
 }
 
