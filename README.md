@@ -23,6 +23,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ## 更新日志
 
+- **v19**：只重试自动字幕中行数不一致的小批次，避免整段重试触发并发限制。
 - **v18**：回到 v16 的稳定逻辑，只缩小自动字幕的翻译批次，尝试改善 iPad 等待超时。
 - **v17**：尝试限制翻译等待时间，但拆分翻译结果时出现行数不一致，已停用。
 - **v16**：优化自动字幕长句的分段与衔接，减少三行显示和字幕重叠。
@@ -38,7 +39,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 | `src/function/youtubeTimedText.mjs` | 自动字幕两行显示与长句处理 |
 | `request.youtube-standalone-v18.bundle.js` | YouTube Player 请求脚本 |
 | `response.youtube-standalone-v18.bundle.js` | YouTube Player / GetWatch 响应脚本 |
-| `Translate.response.youtube-fix-v18.bundle.js` | 从本仓库源码构建的字幕响应脚本 |
+| `Translate.response.youtube-fix-v*.bundle.js` | 从本仓库源码构建的字幕响应脚本 |
 | `tests/` | 自动字幕、官方字幕和模块独立性测试 |
 
 ## 开源说明

@@ -21,7 +21,7 @@ const SETTINGS = Object.freeze({
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 18 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 19 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -31,7 +31,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const requestURL = new URL($request.url);
 	const isAutomaticCaption = requestURL.searchParams.get("kind") === "asr";
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 18 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 19 skipped: response is not timedtext XML");
 		return;
 	}
 
@@ -70,7 +70,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "18";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "19";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "fixed-two-lines-split-long-cues" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-XML-Original-Length"] = String(originalXMLLength);
@@ -91,8 +91,20 @@ async function Translator(method = "Part", text = [], isAutomaticCaption = false
 		: chunk(text, 120);
 	if (isAutomaticCaption) {
 		Console.info(`YouTube ASR translation batches: rows=${text.length}, batches=${parts.length}, maxEncoded=${SETTINGS.ASRMaxEncodedLength}`);
+		return await Promise.all(parts.map((part, index) => translateAutomaticBatch(part, `${index + 1}/${parts.length}`))).then(part => part.flat(Number.POSITIVE_INFINITY));
 	}
 	return await Promise.all(parts.map(part => retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential))).then(part => part.flat(Number.POSITIVE_INFINITY));
+}
+
+async function translateAutomaticBatch(part, label) {
+	const translation = await retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+	if (translation.length === part.length) return translation;
+	Console.warn(`YouTube ASR batch mismatch: batch=${label}, expected=${part.length}, received=${translation.length}; retry smaller`);
+	if (part.length <= 1) return [normalizeTranslation(translation)];
+
+	const middle = Math.ceil(part.length / 2);
+	const halves = [part.slice(0, middle), part.slice(middle)];
+	return await Promise.all(halves.map((half, index) => translateAutomaticBatch(half, `${label}.${index + 1}`))).then(result => result.flat(Number.POSITIVE_INFINITY));
 }
 
 async function googleTranslate(text) {
@@ -101,7 +113,7 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/18",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/19",
 			Referer: "https://translate.google.com",
 		},
 	};
