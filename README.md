@@ -23,6 +23,10 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ## 更新日志
 
+### 2026-07-22
+
+- **v21**：超长官方字幕只重试出错的小批次，并限制重试数量，避免长片字幕被取消。
+
 ### 2026-07-18
 
 - **v20**：超长自动字幕改为排队翻译，几千行字幕也不会一次发出过多请求。

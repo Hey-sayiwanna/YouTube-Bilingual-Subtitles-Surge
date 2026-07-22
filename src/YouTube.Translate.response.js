@@ -23,7 +23,7 @@ const SETTINGS = Object.freeze({
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 20 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 21 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -33,7 +33,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const requestURL = new URL($request.url);
 	const isAutomaticCaption = requestURL.searchParams.get("kind") === "asr";
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 20 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 21 skipped: response is not timedtext XML");
 		return;
 	}
 
@@ -72,7 +72,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "20";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "21";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "fixed-two-lines-split-long-cues" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-XML-Original-Length"] = String(originalXMLLength);
@@ -86,37 +86,44 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 async function Translator(method = "Part", text = [], isAutomaticCaption = false) {
 	Console.info(`YouTube standalone translator: method=${method}, source=${SETTINGS.Source}, target=${SETTINGS.Target}`);
 	if (method === "Row") {
-		return await Promise.all(text.map(row => retry(() => googleTranslate(row), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential)));
+		const translateRow = row => retry(() => googleTranslate(row), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+		if (text.length > SETTINGS.ASRQueueThreshold) {
+			Console.info(`YouTube Row fallback scheduler: rows=${text.length}, concurrency=${SETTINGS.ASRMaxConcurrency}`);
+			return await mapWithConcurrency(text, SETTINGS.ASRMaxConcurrency, translateRow);
+		}
+		return await Promise.all(text.map(translateRow));
 	}
 	const parts = isAutomaticCaption
 		? chunkByEncodedLength(text, SETTINGS.ASRMaxEncodedLength)
 		: chunk(text, 120);
+	const captionType = isAutomaticCaption ? "ASR" : "official";
+	const useBoundedQueue = parts.length > SETTINGS.ASRQueueThreshold;
 	if (isAutomaticCaption) {
-		const useBoundedQueue = parts.length > SETTINGS.ASRQueueThreshold;
 		Console.info(`YouTube ASR translation batches: rows=${text.length}, batches=${parts.length}, maxEncoded=${SETTINGS.ASRMaxEncodedLength}, scheduler=${useBoundedQueue ? `bounded-${SETTINGS.ASRMaxConcurrency}` : "direct"}`);
-		if (useBoundedQueue) {
-			const translatedParts = await mapWithConcurrency(parts, SETTINGS.ASRMaxConcurrency, (part, index) => translateAutomaticBatch(part, `${index + 1}/${parts.length}`, true));
-			return translatedParts.flat(Number.POSITIVE_INFINITY);
-		}
-		return await Promise.all(parts.map((part, index) => translateAutomaticBatch(part, `${index + 1}/${parts.length}`, false))).then(part => part.flat(Number.POSITIVE_INFINITY));
+	} else if (useBoundedQueue) {
+		Console.info(`YouTube official translation batches: rows=${text.length}, batches=${parts.length}, batchSize=120, scheduler=bounded-${SETTINGS.ASRMaxConcurrency}`);
 	}
-	return await Promise.all(parts.map(part => retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential))).then(part => part.flat(Number.POSITIVE_INFINITY));
+	const translatePart = (part, index) => translateBatch(part, `${index + 1}/${parts.length}`, useBoundedQueue, captionType);
+	const translatedParts = useBoundedQueue
+		? await mapWithConcurrency(parts, SETTINGS.ASRMaxConcurrency, translatePart)
+		: await Promise.all(parts.map(translatePart));
+	return translatedParts.flat(Number.POSITIVE_INFINITY);
 }
 
-async function translateAutomaticBatch(part, label, useBoundedQueue) {
+async function translateBatch(part, label, useBoundedQueue, captionType) {
 	const translation = await retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
 	if (translation.length === part.length) return translation;
-	Console.warn(`YouTube ASR batch mismatch: batch=${label}, expected=${part.length}, received=${translation.length}; retry smaller`);
+	Console.warn(`YouTube ${captionType} batch mismatch: batch=${label}, expected=${part.length}, received=${translation.length}; retry smaller`);
 	if (part.length <= 1) return [normalizeTranslation(translation)];
 
 	const middle = Math.ceil(part.length / 2);
 	const halves = [part.slice(0, middle), part.slice(middle)];
 	if (useBoundedQueue) {
-		const first = await translateAutomaticBatch(halves[0], `${label}.1`, true);
-		const second = await translateAutomaticBatch(halves[1], `${label}.2`, true);
+		const first = await translateBatch(halves[0], `${label}.1`, true, captionType);
+		const second = await translateBatch(halves[1], `${label}.2`, true, captionType);
 		return [...first, ...second];
 	}
-	return await Promise.all(halves.map((half, index) => translateAutomaticBatch(half, `${label}.${index + 1}`, false))).then(result => result.flat(Number.POSITIVE_INFINITY));
+	return await Promise.all(halves.map((half, index) => translateBatch(half, `${label}.${index + 1}`, false, captionType))).then(result => result.flat(Number.POSITIVE_INFINITY));
 }
 
 async function googleTranslate(text) {
@@ -125,7 +132,7 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/20",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/21",
 			Referer: "https://translate.google.com",
 		},
 	};

@@ -8,6 +8,7 @@ const multilineSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format=
 const ipadMergedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 248 }, (_, index) => `<p t="${index * 8000}" d="7900" w="1"><s>${index < 126 ? "가".repeat(24) : `짧은 자동 자막 ${index + 1}`}</s></p>`).join("")}</body></timedtext>`;
 const hugeSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 3711 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>자동 자막 ${index + 1}</s></p>`).join("")}</body></timedtext>`;
 const largeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 121 }, (_, index) => `<p t="${index * 2000}" d="1900">Official caption ${index + 1}</p>`).join("")}</body></timedtext>`;
+const hugeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 5578 }, (_, index) => `<p t="${index * 2000}" d="1900">Long movie official caption ${index + 1}</p>`).join("")}</body></timedtext>`;
 
 async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0 }) {
 	const translateRequestURLs = [];
@@ -47,7 +48,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v20.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../Translate.response.youtube-fix-v21.bundle.js?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
@@ -68,7 +69,7 @@ const automatic = await runBundle({
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "20");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "21");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "fixed-two-lines-split-long-cues");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
@@ -99,7 +100,7 @@ const official = await runBundle({
 	testName: "official",
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "20");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "21");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
 const officialBody = XML.parse(official.output.body).timedtext.body;
 assert.notEqual(officialBody.w, undefined);
@@ -172,6 +173,32 @@ assert.equal(largeOfficial.translateRequestURLs.length, 2);
 assert.equal(new URL(largeOfficial.translateRequestURLs[0]).searchParams.get("q").split(/\r/).length, 120);
 assert.equal(new URL(largeOfficial.translateRequestURLs[1]).searchParams.get("q").split(/\r/).length, 1);
 
+let droppedOfficialRow = false;
+const hugeOfficialMismatch = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=movie&lang=en&format=srv3&subtype=Translate",
+	translation: rows => {
+		const translated = rows.map((_, index) => `超长官方字幕翻译${index + 1}`);
+		if (!droppedOfficialRow && rows.length > 1) {
+			droppedOfficialRow = true;
+			translated.pop();
+		}
+		return translated.join("\r");
+	},
+	testName: "official-long-movie-single-batch-mismatch",
+	body: hugeOfficialSrv3,
+	concurrentRequestLimit: 50,
+	responseDelay: 2,
+});
+assert.equal(
+	(hugeOfficialMismatch.output.body.match(/&#x000A;超长官方字幕翻译/gu) ?? []).length,
+	5578,
+	"a single malformed long-movie batch should be recovered locally without retrying every subtitle row",
+);
+assert.ok(
+	hugeOfficialMismatch.maximumActiveRequests <= 6,
+	`long official captions must use bounded concurrency, received ${hugeOfficialMismatch.maximumActiveRequests}`,
+);
+
 console.log(JSON.stringify({
 	standaloneBundle: "passed",
 	googleAutoToZhHans: "passed",
@@ -184,4 +211,5 @@ console.log(JSON.stringify({
 	ipadMergedBatchMismatchRecoveredLocally: "passed",
 	hugeAutomaticCaptionsUseBoundedConcurrency: "passed",
 	officialV16BatchingPreserved: "passed",
+	hugeOfficialMismatchRecoveredLocally: "passed",
 }, null, 2));
