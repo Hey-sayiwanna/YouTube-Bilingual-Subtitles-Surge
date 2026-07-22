@@ -38,6 +38,31 @@ export function disableYouTubeBroadcastRollingWindow(body) {
 	return disableYouTubeRollingWindow(body);
 }
 
+/**
+ * End an overlong broadcast cue at the next roll-up event. This only shortens
+ * proven overlaps; it never extends a cue or changes non-overlapping timing.
+ */
+export function shortenYouTubeBroadcastOverlaps(body) {
+	const timedTextBody = body?.timedtext?.body;
+	if (!timedTextBody) return 0;
+	let paragraphs = timedTextBody.p;
+	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
+	let shortened = 0;
+	paragraphs.forEach((paragraph, index) => {
+		const text = readYouTubeTimedTextParagraph(paragraph).text;
+		if (!text || text === ZERO_WIDTH_SPACE) return;
+		const start = parsePositiveInteger(paragraph?.["@t"], true);
+		const duration = parsePositiveInteger(paragraph?.["@d"]);
+		const nextStart = findNextParagraphStart(paragraphs, index + 1, start);
+		const availableDuration = Number.isFinite(start) && Number.isFinite(nextStart) ? nextStart - start : undefined;
+		if (Number.isFinite(duration) && Number.isFinite(availableDuration) && availableDuration > 0 && duration > availableDuration) {
+			paragraph["@d"] = String(availableDuration);
+			shortened += 1;
+		}
+	});
+	return shortened;
+}
+
 function disableYouTubeRollingWindow(body) {
 	const timedTextBody = body?.timedtext?.body;
 	if (!timedTextBody) return 0;

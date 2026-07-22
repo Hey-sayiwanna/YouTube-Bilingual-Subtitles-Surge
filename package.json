@@ -1,6 +1,6 @@
 {
 	"name": "@hey-sayiwanna/youtube-bilingual-subtitles-surge",
-	"version": "22.0.0",
+	"version": "23.0.0",
 	"private": true,
 	"type": "module",
 	"description": "独立维护的 Surge YouTube 自动简中双语字幕模块",
