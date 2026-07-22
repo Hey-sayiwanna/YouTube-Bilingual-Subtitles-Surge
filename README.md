@@ -25,6 +25,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ### 2026-07-22
 
+- **v22**：单独整理电视广播字幕的滚动残留和翻译并发，不改变自动字幕与普通官方字幕。
 - **v21**：超长官方字幕只重试出错的小批次，并限制重试数量，避免长片字幕被取消。
 
 ### 2026-07-18

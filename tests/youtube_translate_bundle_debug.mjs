@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import XML from "../src/XML/XML.mjs";
 
 const rollingSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><ws id="0"/><ws id="1" mh="2" ju="0" sd="3"/><wp id="0"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><w t="0" id="1" wp="1" ws="1"/><p t="40" d="4200" w="1"><s>첫 번째 문장</s></p><p t="4230" w="1" a="1"></p><p t="4240" d="4200" w="1"><s>두 번째 문장</s></p></body></timedtext>`;
+const plainOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="2" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="40" d="4200" wp="2"><s>첫 번째 문장</s></p><p t="4230" d="10" wp="2"></p><p t="4240" d="4200" wp="2"><s>두 번째 문장</s></p></body></timedtext>`;
 const longSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="0"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="1000" d="9000" w="1"><s>This is a very long automatic caption, and it should be divided at a natural boundary before it overlaps.</s></p><p t="8500" d="2000" w="1"><s>Next caption.</s></p></body></timedtext>`;
 const largeSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 231 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>자동 생성 자막 ${index + 1}: 화면 문장입니다.</s></p>`).join("")}</body></timedtext>`;
 const multilineSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 535 }, (_, index) => `<p t="${index * 2000}" d="1900">자동 자막 ${index + 1}${index % 3 === 0 ? "\n본문 두 번째 줄" : ""}</p>`).join("")}</body></timedtext>`;
@@ -9,6 +10,7 @@ const ipadMergedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format
 const hugeSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 3711 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>자동 자막 ${index + 1}</s></p>`).join("")}</body></timedtext>`;
 const largeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 121 }, (_, index) => `<p t="${index * 2000}" d="1900">Official caption ${index + 1}</p>`).join("")}</body></timedtext>`;
 const hugeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 5578 }, (_, index) => `<p t="${index * 2000}" d="1900">Long movie official caption ${index + 1}</p>`).join("")}</body></timedtext>`;
+const largeBroadcastSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><ws id="1" mh="2" ju="0" sd="3"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><w t="0" id="1" wp="1" ws="1"/>${Array.from({ length: 3001 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>Broadcast caption ${index + 1}</s></p>`).join("")}</body></timedtext>`;
 
 async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0 }) {
 	const translateRequestURLs = [];
@@ -48,7 +50,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v21.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../Translate.response.youtube-fix-v22.bundle.js?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
@@ -69,7 +71,7 @@ const automatic = await runBundle({
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "21");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "22");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "fixed-two-lines-split-long-cues");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
@@ -98,14 +100,72 @@ const official = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=test&lang=ko&format=srv3&subtype=Translate",
 	translation: "第一句\r\u200b\r第二句",
 	testName: "official",
+	body: plainOfficialSrv3,
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "21");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "22");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-Broadcast-Mode"], "unchanged");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "official");
 const officialBody = XML.parse(official.output.body).timedtext.body;
-assert.notEqual(officialBody.w, undefined);
-assert.equal(officialBody.p[0]["@w"], "1");
-assert.equal(officialBody.p[1]["@a"], "1");
+assert.equal(officialBody.p[0]["@wp"], "2");
+assert.equal(officialBody.p[1]["@wp"], "2");
+assert.match(official.output.body, /첫 번째 문장&#x000A;第一句/);
+assert.match(official.output.body, /두 번째 문장&#x000A;第二句/);
+
+const broadcastCC2 = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=broadcast&lang=en&name=CC2&format=srv3&subtype=Translate",
+	translation: "上一句翻译\r\u200b\r当前句翻译",
+	testName: "broadcast-cc2-rolling-window",
+});
+assert.equal(broadcastCC2.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "broadcast");
+const broadcastCC2Body = XML.parse(broadcastCC2.output.body).timedtext.body;
+assert.equal(broadcastCC2Body.w, undefined);
+assert.ok(broadcastCC2Body.p.every(paragraph => paragraph["@w"] === undefined && paragraph["@a"] === undefined));
+assert.match(broadcastCC2.output.body, /첫 번째 문장&#x000A;上一句翻译/);
+assert.match(broadcastCC2.output.body, /두 번째 문장&#x000A;当前句翻译/);
+
+const unnamedBroadcast = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=broadcast&lang=en&name=English&format=srv3&subtype=Translate",
+	translation: "上一句翻译\r\u200b\r当前句翻译",
+	testName: "broadcast-structure-fallback",
+});
+assert.equal(unnamedBroadcast.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "broadcast");
+assert.equal(XML.parse(unnamedBroadcast.output.body).timedtext.body.w, undefined);
+
+const broadcastTrackNameFamilies = [
+	"CC1",
+	"CC4",
+	"DTVCC1",
+	"DTVCC63",
+	"SERVICE1",
+	"Service 63",
+	"CEA-608",
+	"EIA 708",
+	"Embedded 608/708",
+	"Line 21",
+];
+for (const [index, trackName] of broadcastTrackNameFamilies.entries()) {
+	const namedBroadcast = await runBundle({
+		url: `https://www.youtube.com/api/timedtext?v=broadcast-name&lang=en&name=${encodeURIComponent(trackName)}&format=srv3&subtype=Translate`,
+		translation: "第一句\r\u200b\r第二句",
+		testName: `broadcast-name-family-${index}`,
+		body: plainOfficialSrv3,
+	});
+	assert.equal(namedBroadcast.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "broadcast", `${trackName} should use the isolated broadcast path`);
+}
+
+const longBroadcast = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=broadcast-long&lang=en&name=DTVCC2&format=srv3&subtype=Translate",
+	translation: rows => rows.map((_, index) => `广播字幕翻译${index + 1}`).join("\r"),
+	testName: "broadcast-dtvcc-bounded-concurrency",
+	body: largeBroadcastSrv3,
+	concurrentRequestLimit: 6,
+	responseDelay: 2,
+});
+assert.equal(longBroadcast.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "broadcast");
+assert.equal((longBroadcast.output.body.match(/&#x000A;广播字幕翻译/gu) ?? []).length, 3001);
+assert.ok(longBroadcast.maximumActiveRequests <= 6, `broadcast translation concurrency must stay bounded, received ${longBroadcast.maximumActiveRequests}`);
 
 const capturedLike = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=ipad&kind=asr&lang=ko&format=srv3&subtype=Translate",
@@ -206,6 +266,10 @@ console.log(JSON.stringify({
 	autoGeneratedLongCueSplit: "passed",
 	autoGeneratedNonOverlappingTiming: "passed",
 	officialCaptionsUnchanged: "passed",
+	broadcastCCFamilyFixedTwoLines: "passed",
+	broadcastStandardNameFamiliesDetected: "passed",
+	unknownBroadcastNameDetectedByStructure: "passed",
+	longBroadcastCaptionsUseBoundedConcurrency: "passed",
 	ipadLargeASRSmallBatching: "passed",
 	automaticMultilineRowsPreserved: "passed",
 	ipadMergedBatchMismatchRecoveredLocally: "passed",

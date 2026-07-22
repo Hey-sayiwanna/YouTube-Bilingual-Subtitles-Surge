@@ -26,6 +26,19 @@ export function ensureYouTubeTimedTextRows(body, minimumRows = 2) {
  * Official/creator-provided captions do not call this function.
  */
 export function disableYouTubeASRRollingWindow(body) {
+	return disableYouTubeRollingWindow(body);
+}
+
+/**
+ * Broadcast CC/DTVCC tracks can use the same roll-up window instructions as
+ * automatic captions. Keep this entry point separate so ordinary official
+ * captions never enter the broadcast normalization path by accident.
+ */
+export function disableYouTubeBroadcastRollingWindow(body) {
+	return disableYouTubeRollingWindow(body);
+}
+
+function disableYouTubeRollingWindow(body) {
 	const timedTextBody = body?.timedtext?.body;
 	if (!timedTextBody) return 0;
 	delete timedTextBody.w;
