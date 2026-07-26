@@ -8,8 +8,9 @@ const largeSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3">
 const multilineSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 535 }, (_, index) => `<p t="${index * 2000}" d="1900">자동 자막 ${index + 1}${index % 3 === 0 ? "\n본문 두 번째 줄" : ""}</p>`).join("")}</body></timedtext>`;
 const ipadMergedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 248 }, (_, index) => `<p t="${index * 8000}" d="7900" w="1"><s>${index < 126 ? "가".repeat(24) : `짧은 자동 자막 ${index + 1}`}</s></p>`).join("")}</body></timedtext>`;
 const hugeSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 3711 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>자동 자막 ${index + 1}</s></p>`).join("")}</body></timedtext>`;
-const largeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 121 }, (_, index) => `<p t="${index * 2000}" d="1900">Official caption ${index + 1}</p>`).join("")}</body></timedtext>`;
-const hugeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 5578 }, (_, index) => `<p t="${index * 2000}" d="1900">Long movie official caption ${index + 1}</p>`).join("")}</body></timedtext>`;
+const shortOfficialFragmentsSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="1000" d="1000">This is one</p><p t="2000" d="1100">complete official</p><p t="3100" d="900">caption.</p><p t="4000" d="900">Next sentence.</p></body></timedtext>`;
+const largeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 121 }, (_, index) => `<p t="${index * 2000}" d="1900">Official caption ${index + 1}.</p>`).join("")}</body></timedtext>`;
+const hugeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 5578 }, (_, index) => `<p t="${index * 2000}" d="1900">Long movie official caption ${index + 1}.</p>`).join("")}</body></timedtext>`;
 const largeBroadcastSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><ws id="1" mh="2" ju="0" sd="3"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><w t="0" id="1" wp="1" ws="1"/>${Array.from({ length: 3001 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>Broadcast caption ${index + 1}</s></p>`).join("")}</body></timedtext>`;
 
 async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0 }) {
@@ -50,7 +51,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v23.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../Translate.response.youtube-fix-v24.bundle.js?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
@@ -71,7 +72,7 @@ const automatic = await runBundle({
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "23");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "24");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "fixed-two-lines-split-long-cues");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
@@ -103,7 +104,7 @@ const official = await runBundle({
 	body: plainOfficialSrv3,
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "23");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "24");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Broadcast-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "official");
@@ -112,6 +113,17 @@ assert.equal(officialBody.p[0]["@wp"], "2");
 assert.equal(officialBody.p[1]["@wp"], "2");
 assert.match(official.output.body, /첫 번째 문장&#x000A;第一句/);
 assert.match(official.output.body, /두 번째 문장&#x000A;第二句/);
+
+const groupedOfficial = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=official-fragments&lang=en&format=srv3&subtype=Translate",
+	translation: rows => rows.map((_, index) => `合并翻译${index + 1}`).join("\r"),
+	testName: "official-short-sentence-grouping",
+	body: shortOfficialFragmentsSrv3,
+});
+const groupedOfficialParagraphs = XML.parse(groupedOfficial.output.body).timedtext.body.p;
+assert.equal(groupedOfficialParagraphs.length, 2);
+assert.match(groupedOfficial.output.body, /This is one complete official caption\.&#x000A;合并翻译1/);
+assert.match(groupedOfficial.output.body, /Next sentence\.&#x000A;合并翻译2/);
 
 const broadcastCC2 = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=broadcast&lang=en&name=CC2&format=srv3&subtype=Translate",
@@ -212,9 +224,17 @@ assert.equal(XML.parse(ipadMergedMismatch.output.body).timedtext.body.p.length, 
 assert.equal((ipadMergedMismatch.output.body.match(/&#x000A;局部重试翻译/gu) ?? []).length, 374);
 assert.ok(ipadMergedMismatch.translateRequestURLs.length < 80, "a single bad batch must not retry every subtitle row");
 
+let droppedHugeAutomaticRow = false;
 const hugeAutomatic = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=huge&kind=asr&lang=ko&format=srv3&subtype=Translate",
-	translation: rows => rows.map((_, index) => `超长视频翻译${index + 1}`).join("\r"),
+	translation: rows => {
+		const translated = rows.map((_, index) => `超长视频翻译${index + 1}`);
+		if (!droppedHugeAutomaticRow && rows.length > 1) {
+			droppedHugeAutomaticRow = true;
+			translated.pop();
+		}
+		return translated.join("\r");
+	},
 	testName: "automatic-bounded-concurrency",
 	body: hugeSrv3,
 	concurrentRequestLimit: 6,
@@ -267,6 +287,7 @@ console.log(JSON.stringify({
 	autoGeneratedLongCueSplit: "passed",
 	autoGeneratedNonOverlappingTiming: "passed",
 	officialCaptionsUnchanged: "passed",
+	officialShortSentenceFragmentsGrouped: "passed",
 	broadcastCCFamilyFixedTwoLines: "passed",
 	broadcastOverlapsShortenedOnlyWhenProven: "passed",
 	broadcastStandardNameFamiliesDetected: "passed",

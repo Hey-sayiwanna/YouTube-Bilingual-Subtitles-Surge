@@ -63,6 +63,48 @@ export function shortenYouTubeBroadcastOverlaps(body) {
 	return shortened;
 }
 
+/**
+ * Join only adjacent, short fragments from ordinary official captions.
+ *
+ * Some creator-provided tracks split one sentence into several back-to-back
+ * srv3 paragraphs. Preserve punctuation, layout changes, speaker changes and
+ * real timing gaps as hard boundaries. Automatic and broadcast captions use
+ * separate entry points and never call this function.
+ */
+export function mergeYouTubeOfficialSentenceFragments(body, maximumWidth = 52, maximumGap = 350) {
+	const timedTextBody = body?.timedtext?.body;
+	if (!timedTextBody) return { input: 0, output: 0, merged: 0 };
+
+	let paragraphs = timedTextBody.p;
+	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
+	const output = [];
+	let merged = 0;
+
+	for (const paragraph of paragraphs) {
+		const previous = output.at(-1);
+		if (!previous || !canMergeOfficialParagraphs(previous, paragraph, maximumWidth, maximumGap)) {
+			output.push(paragraph);
+			continue;
+		}
+
+		const previousText = readYouTubeTimedTextParagraph(previous);
+		const currentText = readYouTubeTimedTextParagraph(paragraph);
+		const combinedText = joinYouTubeCaptionFragments(previousText.text, currentText.text);
+		const previousStart = parsePositiveInteger(previous["@t"], true);
+		const previousDuration = parsePositiveInteger(previous["@d"]);
+		const currentStart = parsePositiveInteger(paragraph?.["@t"], true);
+		const currentDuration = parsePositiveInteger(paragraph?.["@d"]);
+		const combinedEnd = Math.max(previousStart + previousDuration, currentStart + currentDuration);
+
+		previous["@d"] = String(combinedEnd - previousStart);
+		setYouTubeTimedTextParagraphText(previous, combinedText, previousText.segmented || currentText.segmented);
+		merged += 1;
+	}
+
+	timedTextBody.p = output;
+	return { input: paragraphs.length, output: output.length, merged };
+}
+
 function disableYouTubeRollingWindow(body) {
 	const timedTextBody = body?.timedtext?.body;
 	if (!timedTextBody) return 0;
@@ -259,8 +301,76 @@ function parsePositiveInteger(value, allowZero = false) {
 	return number;
 }
 
+function canMergeOfficialParagraphs(previous, current, maximumWidth, maximumGap) {
+	const previousText = readYouTubeTimedTextParagraph(previous).text;
+	const currentText = readYouTubeTimedTextParagraph(current).text;
+	if (!isVisibleYouTubeCaption(previousText) || !isVisibleYouTubeCaption(currentText)) return false;
+	if (endsYouTubeCaptionSentence(previousText) || startsNewYouTubeCaptionSpeaker(currentText)) return false;
+	if (youtubeParagraphLayoutSignature(previous) !== youtubeParagraphLayoutSignature(current)) return false;
+
+	const previousStart = parsePositiveInteger(previous?.["@t"], true);
+	const previousDuration = parsePositiveInteger(previous?.["@d"]);
+	const currentStart = parsePositiveInteger(current?.["@t"], true);
+	const currentDuration = parsePositiveInteger(current?.["@d"]);
+	if (![previousStart, previousDuration, currentStart, currentDuration].every(Number.isFinite)) return false;
+
+	const gap = currentStart - (previousStart + previousDuration);
+	if (gap < -100 || gap > maximumGap) return false;
+	return measureYouTubeCaptionWidth(joinYouTubeCaptionFragments(previousText, currentText)) <= maximumWidth;
+}
+
+function isVisibleYouTubeCaption(text) {
+	return Boolean(normalizeText(text).trim()) && text !== ZERO_WIDTH_SPACE;
+}
+
+function endsYouTubeCaptionSentence(text) {
+	return /[.!?。！？…][\s"'’”)\]】」』]*$/u.test(normalizeText(text));
+}
+
+function startsNewYouTubeCaptionSpeaker(text) {
+	return /^\s*(?:>{2,}|[-–—]\s+|\[[^\]]{1,40}\]\s*)/u.test(normalizeText(text));
+}
+
+function youtubeParagraphLayoutSignature(paragraph) {
+	return Object.entries(paragraph ?? {})
+		.filter(([key]) => key.startsWith("@") && key !== "@t" && key !== "@d")
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([key, value]) => `${key}=${value}`)
+		.join("&");
+}
+
+function joinYouTubeCaptionFragments(previousText, currentText) {
+	previousText = normalizeText(previousText);
+	currentText = normalizeText(currentText);
+	if (!previousText || !currentText || /\s$/u.test(previousText) || /^\s/u.test(currentText)) return `${previousText}${currentText}`;
+	if (/^[,.!?;:，。！？；：、…)\]】」』]/u.test(currentText)) return `${previousText}${currentText}`;
+	const previousCharacter = Array.from(previousText).at(-1) ?? "";
+	const currentCharacter = Array.from(currentText)[0] ?? "";
+	if (isHanOrKana(previousCharacter) && isHanOrKana(currentCharacter)) return `${previousText}${currentText}`;
+	return `${previousText} ${currentText}`;
+}
+
+function setYouTubeTimedTextParagraphText(paragraph, text, segmented) {
+	if (segmented) {
+		paragraph.s = { "#": text };
+		delete paragraph["#"];
+	} else {
+		paragraph["#"] = text;
+		delete paragraph.s;
+	}
+}
+
 function isNaturalCaptionBreak(character) {
 	return /[\s,.!?;:，。！？；：、…\-—)\]】」』]/u.test(character);
+}
+
+function isHanOrKana(character) {
+	const codePoint = character.codePointAt(0) ?? 0;
+	return (
+		(codePoint >= 0x2e80 && codePoint <= 0x9fff) ||
+		(codePoint >= 0x3040 && codePoint <= 0x30ff) ||
+		(codePoint >= 0xf900 && codePoint <= 0xfaff)
+	);
 }
 
 function isWideCharacter(character) {

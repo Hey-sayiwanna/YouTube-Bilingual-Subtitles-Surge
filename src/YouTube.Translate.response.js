@@ -4,6 +4,7 @@ import {
 	disableYouTubeASRRollingWindow,
 	disableYouTubeBroadcastRollingWindow,
 	ensureYouTubeTimedTextRows,
+	mergeYouTubeOfficialSentenceFragments,
 	readYouTubeTimedTextParagraph,
 	shortenYouTubeBroadcastOverlaps,
 	splitYouTubeASRLongParagraphs,
@@ -28,7 +29,7 @@ const SETTINGS = Object.freeze({
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 23 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 24 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -39,7 +40,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const isAutomaticCaption = requestURL.searchParams.get("kind") === "asr";
 	const isBroadcastCaption = !isAutomaticCaption && detectYouTubeBroadcastCaption(requestURL, body);
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 23 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 24 skipped: response is not timedtext XML");
 		return;
 	}
 
@@ -54,6 +55,9 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 		Console.info(`YouTube broadcast fixed two-line mode: ${normalizedParagraphs} paragraphs`);
 		const shortenedOverlaps = shortenYouTubeBroadcastOverlaps(body);
 		Console.info(`YouTube broadcast overlap trim: shortened=${shortenedOverlaps}`);
+	} else {
+		const mergeResult = mergeYouTubeOfficialSentenceFragments(body, 52);
+		Console.info(`YouTube official sentence grouping: input=${mergeResult.input}, output=${mergeResult.output}, merged=${mergeResult.merged}`);
 	}
 	let paragraphs = body?.timedtext?.body?.p;
 	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
@@ -83,7 +87,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "23";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "24";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "fixed-two-lines-split-long-cues" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-Broadcast-Mode"] = isBroadcastCaption ? "fixed-two-lines-no-roll-up" : "unchanged";
@@ -150,7 +154,7 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/23",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/24",
 			Referer: "https://translate.google.com",
 		},
 	};
