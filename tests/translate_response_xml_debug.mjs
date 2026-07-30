@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import XML from "../src/XML/XML.mjs";
 import {
 	disableYouTubeASRRollingWindow,
+	detectYouTubeChineseCaption,
 	ensureYouTubeTimedTextRows,
 	mergeYouTubeOfficialSentenceFragments,
 	measureYouTubeCaptionWidth,
@@ -59,6 +60,26 @@ const noPunctuationKorean = "자동생성자막이아주길어도화면에서서
 const escapedXml = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0"><s>A &amp; B</s></p></body></timedtext>`;
 const shortOfficialFragments = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="1000" d="1000">This is one</p><p t="2000" d="1100">complete official</p><p t="3100" d="900">caption.</p><p t="4000" d="900">Next sentence.</p></body></timedtext>`;
 const styledOfficialFragments = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="1000" d="1000" wp="1">First speaker</p><p t="2000" d="1000" wp="2">second speaker</p></body></timedtext>`;
+const simplifiedChinese = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0">这是简体中文字幕，不需要再次翻译。</p></body></timedtext>`;
+const traditionalChinese = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0">這是繁體中文字幕，不需要再次翻譯。</p></body></timedtext>`;
+
+assert.deepEqual(
+	detectYouTubeChineseCaption("https://www.youtube.com/api/timedtext?lang=zh-Hans&tlang=zh-Hans", XML.parse(simplifiedChinese)),
+	{ detected: true, reason: "language:zh-Hans" },
+);
+assert.deepEqual(
+	detectYouTubeChineseCaption("https://www.youtube.com/api/timedtext?lang=zh-Hant&tlang=zh-Hans", XML.parse(traditionalChinese)),
+	{ detected: true, reason: "language:zh-Hant" },
+);
+assert.equal(detectYouTubeChineseCaption("https://www.youtube.com/api/timedtext?lang=und", XML.parse(simplifiedChinese)).detected, true);
+assert.equal(detectYouTubeChineseCaption("https://www.youtube.com/api/timedtext?lang=ja", XML.parse(simplifiedChinese)).detected, false);
+assert.equal(
+	detectYouTubeChineseCaption(
+		"https://www.youtube.com/api/timedtext?lang=und",
+		XML.parse(`<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0">これは日本語の字幕です。今日は良い天気です。</p></body></timedtext>`),
+	).detected,
+	false,
+);
 
 const koreanOutput = await synthesize(korean, "YouTube", async (_method, text) => text.map(() => "你好"));
 assert.match(koreanOutput, /안녕.*하세요/);
@@ -154,5 +175,6 @@ console.log(JSON.stringify({
 	officialLongCuePreserved: "passed",
 	officialShortSentenceFragmentsMerged: "passed",
 	officialDifferentLayoutsPreserved: "passed",
+	chineseSourceDetection: "passed",
 	xmlEscaping: "passed"
 }, null, 2));

@@ -3,6 +3,7 @@ import XML from "./XML/XML.mjs";
 import {
 	disableYouTubeASRRollingWindow,
 	disableYouTubeBroadcastRollingWindow,
+	detectYouTubeChineseCaption,
 	ensureYouTubeTimedTextRows,
 	mergeYouTubeOfficialSentenceFragments,
 	readYouTubeTimedTextParagraph,
@@ -29,7 +30,7 @@ const SETTINGS = Object.freeze({
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 24 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 25 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -40,7 +41,17 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const isAutomaticCaption = requestURL.searchParams.get("kind") === "asr";
 	const isBroadcastCaption = !isAutomaticCaption && detectYouTubeBroadcastCaption(requestURL, body);
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 24 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 25 skipped: response is not timedtext XML");
+		return;
+	}
+	const chineseSource = detectYouTubeChineseCaption(requestURL, body);
+	if (chineseSource.detected) {
+		$response.headers = $response.headers ?? {};
+		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "25";
+		$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
+		$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = "chinese-pass-through";
+		$response.headers["X-Hey-Sayiwanna-Chinese-Source"] = chineseSource.reason;
+		Console.info(`YouTube Chinese source detected; translation bypassed: ${chineseSource.reason}`);
 		return;
 	}
 
@@ -87,7 +98,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "24";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "25";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "fixed-two-lines-split-long-cues" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-Broadcast-Mode"] = isBroadcastCaption ? "fixed-two-lines-no-roll-up" : "unchanged";
@@ -154,7 +165,7 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/24",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/25",
 			Referer: "https://translate.google.com",
 		},
 	};

@@ -1,4 +1,55 @@
 const ZERO_WIDTH_SPACE = "\u200b";
+const CHINESE_LANGUAGE_CODES = new Set(["zh", "cmn", "yue", "wuu", "nan", "hak", "gan", "hsn", "cdo"]);
+const UNKNOWN_LANGUAGE_CODES = new Set(["", "und", "auto", "mul", "zxx"]);
+
+/**
+ * Detect a Chinese source track without looking at `tlang`.
+ *
+ * YouTube uses `tlang=zh-*` for the requested translation target, so only the
+ * source `lang` and track name are authoritative. Text inspection is a
+ * conservative fallback for tracks whose source language is missing/unknown.
+ */
+export function detectYouTubeChineseCaption(requestURL, body) {
+	let url;
+	try {
+		url = requestURL instanceof URL ? requestURL : new URL(requestURL);
+	} catch {
+		return { detected: false, reason: "invalid-url" };
+	}
+
+	const language = (url.searchParams.get("lang") ?? "").trim();
+	const normalizedLanguage = language.replaceAll("_", "-").toLowerCase();
+	const primaryLanguage = normalizedLanguage.split("-")[0];
+	if (CHINESE_LANGUAGE_CODES.has(primaryLanguage)) {
+		return { detected: true, reason: `language:${language || primaryLanguage}` };
+	}
+	if (!UNKNOWN_LANGUAGE_CODES.has(primaryLanguage)) {
+		return { detected: false, reason: `language:${language}` };
+	}
+
+	const trackName = (url.searchParams.get("name") ?? "").normalize("NFKC");
+	if (/(?:中文|简体|簡體|繁体|繁體|汉语|漢語|粤语|粵語|chinese|mandarin|cantonese)/iu.test(trackName)) {
+		return { detected: true, reason: "track-name" };
+	}
+
+	const timedTextBody = body?.timedtext?.body;
+	let paragraphs = timedTextBody?.p;
+	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
+	const sample = paragraphs
+		.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text)
+		.filter(text => text && text !== ZERO_WIDTH_SPACE)
+		.slice(0, 40)
+		.join("")
+		.slice(0, 2000);
+	const characters = Array.from(sample);
+	const han = characters.filter(character => /\p{Script=Han}/u.test(character)).length;
+	const kana = characters.filter(character => /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(character)).length;
+	const hangul = characters.filter(character => /\p{Script=Hangul}/u.test(character)).length;
+	const latin = characters.filter(character => /\p{Script=Latin}/u.test(character)).length;
+	const letters = han + kana + hangul + latin;
+	const detected = han >= 8 && kana <= 1 && hangul <= 1 && han / Math.max(letters, 1) >= 0.4;
+	return { detected, reason: detected ? "content" : "unknown" };
+}
 
 /**
  * Keep enough rows for an original line plus its translation.
