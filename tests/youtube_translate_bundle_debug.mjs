@@ -53,7 +53,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v25.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../Translate.response.youtube-fix-v26.bundle.js?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
@@ -74,7 +74,7 @@ const automatic = await runBundle({
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "25");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "26");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "fixed-two-lines-split-long-cues");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
@@ -106,7 +106,7 @@ const official = await runBundle({
 	body: plainOfficialSrv3,
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "25");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "26");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Broadcast-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "official");
@@ -274,6 +274,47 @@ assert.equal(largeOfficial.translateRequestURLs.length, 2);
 assert.equal(new URL(largeOfficial.translateRequestURLs[0]).searchParams.get("q").split(/\r/).length, 120);
 assert.equal(new URL(largeOfficial.translateRequestURLs[1]).searchParams.get("q").split(/\r/).length, 1);
 
+// Representative official-track sizes from the iPad logs; these are synthetic
+// captions, not uploaded transcripts or an exact replay of the failed response.
+for (const count of [205, 282]) {
+	const paragraphs = Array.from({ length: count }, (_, index) => `<p t="${index * 3000}" d="2000" wp="2">공식 자막 문장 ${index + 1}.</p>`).join("");
+	const oversizedOfficial = await runBundle({
+		url: "https://www.youtube.com/api/timedtext?v=official-long-query&lang=ko&format=srv3&subtype=Translate",
+		translation: rows => rows.map(row => `译文:${row}`).join("\r"),
+		testName: `official-oversized-query-${count}`,
+		body: `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${paragraphs}</body></timedtext>`,
+	});
+	assert.ok(encodeURIComponent(new URL(oversizedOfficial.translateRequestURLs[0]).searchParams.get("q")).length <= 2400, "the oversized first official batch must be split before sending the translation request");
+	assert.ok(oversizedOfficial.translateRequestURLs.every(url => encodeURIComponent(new URL(url).searchParams.get("q")).length <= 6000), "no multi-row official query should remain above the oversize guard threshold");
+	assert.equal(new URL(oversizedOfficial.translateRequestURLs.at(-1)).searchParams.get("q").split(/\r/).length, count % 120, "the original short remainder batch must remain unchanged");
+	const output = XML.parse(oversizedOfficial.output.body).timedtext.body.p;
+	assert.equal(output.length, count);
+	output.forEach((paragraph, index) => {
+		assert.equal(paragraph["@t"], String(index * 3000));
+		assert.equal(paragraph["@d"], "2000");
+		assert.equal(paragraph["@wp"], "2");
+		assert.match(paragraph["#"], new RegExp(`译文:공식 자막 문장 ${index + 1}\\.`));
+	});
+}
+
+const borderlineOfficial = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=official-short-query&lang=en&format=srv3&subtype=Translate",
+	translation: rows => rows.map(() => "短批次译文").join("\r"),
+	testName: "official-short-query-preserves-120-row-batch",
+	body: `<timedtext format="3"><body>${Array.from({ length: 120 }, (_, index) => `<p t="${index * 3000}" d="2000">${"a".repeat(45)}.</p>`).join("")}</body></timedtext>`,
+});
+assert.equal(borderlineOfficial.translateRequestURLs.length, 1, "ordinary official batches below the oversize threshold must retain the original scheduling");
+assert.equal(XML.parse(borderlineOfficial.output.body).timedtext.body.p.length, 120);
+
+const oversizedBroadcast = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=broadcast-long-query&lang=ko&name=CC1&format=srv3&subtype=Translate",
+	translation: rows => rows.map(() => "广播译文").join("\r"),
+	testName: "official-query-guard-does-not-change-broadcast",
+	body: `<timedtext format="3"><body>${Array.from({ length: 205 }, (_, index) => `<p t="${index * 3000}" d="2000">공식 자막 문장 ${index + 1}.</p>`).join("")}</body></timedtext>`,
+});
+assert.equal(oversizedBroadcast.translateRequestURLs.length, 2, "broadcast batches must not enter the new ordinary-official guard");
+assert.equal(new URL(oversizedBroadcast.translateRequestURLs[0]).searchParams.get("q").split(/\r/).length, 120);
+
 let droppedOfficialRow = false;
 const hugeOfficialMismatch = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=movie&lang=en&format=srv3&subtype=Translate",
@@ -319,5 +360,8 @@ console.log(JSON.stringify({
 	ipadMergedBatchMismatchRecoveredLocally: "passed",
 	hugeAutomaticCaptionsUseBoundedConcurrency: "passed",
 	officialV16BatchingPreserved: "passed",
+	officialOversizedQueriesSplitWithTimingAndOrderPreserved: "passed",
+	officialShortQueriesKeepOriginalBatching: "passed",
+	broadcastOversizedQueriesUnchanged: "passed",
 	hugeOfficialMismatchRecoveredLocally: "passed",
 }, null, 2));
