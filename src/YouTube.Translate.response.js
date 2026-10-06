@@ -31,7 +31,7 @@ const SETTINGS = Object.freeze({
 	OfficialOversizeThreshold: 6000,
 	OfficialMaxEncodedLength: 2400,
 	OfficialLongTrackRows: 600,
-	OfficialLongMaxEncodedLength: 7200,
+	OfficialLongMaxEncodedLength: 10000,
 	OfficialPostEncodedThreshold: 5000,
 	OfficialMaxConcurrency: 2,
 	BroadcastBatchSize: 120,
@@ -184,11 +184,21 @@ async function Translator(method = "Part", text = [], isAutomaticCaption = false
 }
 
 async function translateBatch(part, label, useBoundedQueue, captionType, options = {}) {
-	const translation = await retry(() => googleTranslate(part, options), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+	let translation;
+	try {
+		translation = await retry(() => googleTranslate(part, options), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+	} catch (error) {
+		if (!options.allowPost || part.length <= 1) throw error;
+		Console.warn(`YouTube ${captionType} large batch failed: batch=${label}, rows=${part.length}; split smaller`);
+		return splitAndTranslateBatch(part, label, useBoundedQueue, captionType, options);
+	}
 	if (translation.length === part.length) return translation;
 	Console.warn(`YouTube ${captionType} batch mismatch: batch=${label}, expected=${part.length}, received=${translation.length}; retry smaller`);
 	if (part.length <= 1) return [normalizeTranslation(translation)];
+	return splitAndTranslateBatch(part, label, useBoundedQueue, captionType, options);
+}
 
+async function splitAndTranslateBatch(part, label, useBoundedQueue, captionType, options) {
 	const middle = Math.ceil(part.length / 2);
 	const halves = [part.slice(0, middle), part.slice(middle)];
 	if (useBoundedQueue) {
