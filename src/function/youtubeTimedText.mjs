@@ -497,6 +497,13 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 			const grammarBoundary = terminal || strongPunctuationBoundary
 				? null
 				: scoreYouTubeASRGrammarBoundary(units, end + 1, text, width);
+			if (grammarBoundary?.forbid && !terminal) {
+				const nextText = joinYouTubeCaptionFragments(text, units[end + 1].text).trim();
+				const nextWidth = measureYouTubeCaptionWidth(nextText);
+				const nextDuration = units[end + 1].end - units[start].start;
+				if (nextWidth <= hardWidth && nextDuration <= maximumDuration) continue;
+			}
+
 			const cueCost = scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, {
 				softWidth,
 				minimumWidth,
