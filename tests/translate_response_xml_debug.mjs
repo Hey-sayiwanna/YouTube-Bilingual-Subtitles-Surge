@@ -125,7 +125,6 @@ const possessiveAttachmentBody = XML.parse(possessiveAttachmentASR);
 resegmentYouTubeASRByParagraphTiming(possessiveAttachmentBody);
 const possessiveAttachmentParagraphs = possessiveAttachmentBody.timedtext.body.p;
 const possessiveAttachmentTexts = possessiveAttachmentParagraphs.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
-console.log("[POSSESSIVE-SPLIT]", JSON.stringify(possessiveAttachmentTexts));
 assert.ok(
 	possessiveAttachmentTexts.some(text => /to keep his family warm/u.test(text)),
 	`dependent possessive noun phrase must stay attached to its governing verb: ${JSON.stringify(possessiveAttachmentTexts)}`
