@@ -493,13 +493,8 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 
 			const terminal = end === length - 1;
 			const gapAfter = terminal ? Number.POSITIVE_INFINITY : units[end + 1].start - units[end].end;
-			const boundaryAtParagraphEnd = units[end].paragraphEnd;
-			const nextParagraphIsOrphan =
-				boundaryAtParagraphEnd &&
-				!terminal &&
-				units[end + 1].paragraphIndex !== units[end].paragraphIndex &&
-				(units[end + 1].paragraphWidth <= 16 || units[end + 1].paragraphTokenCount <= 2);
-			const grammarBoundary = terminal
+			const strongPunctuationBoundary = /[.!?。！？…]["'’”)]*$/u.test(text);
+			const grammarBoundary = terminal || strongPunctuationBoundary
 				? null
 				: scoreYouTubeASRGrammarBoundary(units, end + 1, text, width);
 			const cueCost = scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, {
@@ -508,8 +503,6 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 				maximumGap,
 				minimumDuration,
 				terminal,
-				boundaryAtParagraphEnd,
-				nextParagraphIsOrphan,
 				grammarBoundary,
 			});
 			const totalCost = cueCost + costs[end + 1];
