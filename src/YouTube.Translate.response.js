@@ -4,6 +4,7 @@ import {
 	disableYouTubeASRRollingWindow,
 	disableYouTubeBroadcastRollingWindow,
 	rebalanceYouTubeASRSentenceBoundaries,
+	resegmentYouTubeASRByParagraphTiming,
 	resegmentYouTubeASRBySegmentTiming,
 	detectYouTubeChineseCaption,
 	ensureYouTubeTimedTextRows,
@@ -36,7 +37,7 @@ const SETTINGS = Object.freeze({
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 30 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 31 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -47,13 +48,13 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const isAutomaticCaption = requestURL.searchParams.get("kind") === "asr";
 	const isBroadcastCaption = !isAutomaticCaption && detectYouTubeBroadcastCaption(requestURL, body);
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 30 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 31 skipped: response is not timedtext XML");
 		return;
 	}
 	const chineseSource = detectYouTubeChineseCaption(requestURL, body);
 	if (chineseSource.detected) {
 		$response.headers = $response.headers ?? {};
-		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "30";
+		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "31";
 		$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 		$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = "chinese-pass-through";
 		$response.headers["X-Hey-Sayiwanna-Chinese-Source"] = chineseSource.reason;
@@ -63,15 +64,19 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	ensureYouTubeTimedTextRows(body, 2);
 	if (isAutomaticCaption) {
-		const timedResegment = resegmentYouTubeASRBySegmentTiming(body);
-		Console.info(`YouTube ASR timed-stream probe: applied=${timedResegment.applied}, reason=${timedResegment.reason}, segments=${timedResegment.timedSegments}/${timedResegment.segments}, explicit=${timedResegment.explicitTimedSegments ?? 0}, coverage=${Number(timedResegment.coverage ?? 0).toFixed(2)}, input=${timedResegment.input}, output=${timedResegment.output}, boundaries=${timedResegment.boundaries}`);
+		const paragraphResegment = resegmentYouTubeASRByParagraphTiming(body);
+		Console.info(`YouTube ASR v31 paragraph-stream rebuild: applied=${paragraphResegment.applied}, reason=${paragraphResegment.reason}, input=${paragraphResegment.input}, visible=${paragraphResegment.visible}, output=${paragraphResegment.output}, removedEmpty=${paragraphResegment.removedEmpty}, merged=${paragraphResegment.merged}`);
 		const normalizedParagraphs = disableYouTubeASRRollingWindow(body);
 		Console.info(`YouTube ASR fixed two-line mode: ${normalizedParagraphs} paragraphs`);
-		if (!timedResegment.applied) {
-			const boundaryResult = rebalanceYouTubeASRSentenceBoundaries(body, 450);
-			Console.info(`YouTube ASR v29 fallback sentence rebalance: movedTail=${boundaryResult.movedTail}, movedHead=${boundaryResult.movedHead}`);
-			const splitResult = splitYouTubeASRLongParagraphs(body, 40);
-			Console.info(`YouTube ASR v29 fallback long-cue split: input=${splitResult.input}, output=${splitResult.output}, split=${splitResult.split}, shortened=${splitResult.shortened}`);
+		if (!paragraphResegment.applied) {
+			const timedResegment = resegmentYouTubeASRBySegmentTiming(body);
+			Console.info(`YouTube ASR v30 timed-stream fallback: applied=${timedResegment.applied}, reason=${timedResegment.reason}, segments=${timedResegment.timedSegments}/${timedResegment.segments}, explicit=${timedResegment.explicitTimedSegments ?? 0}, coverage=${Number(timedResegment.coverage ?? 0).toFixed(2)}, input=${timedResegment.input}, output=${timedResegment.output}, boundaries=${timedResegment.boundaries}`);
+			if (!timedResegment.applied) {
+				const boundaryResult = rebalanceYouTubeASRSentenceBoundaries(body, 450);
+				Console.info(`YouTube ASR v29 fallback sentence rebalance: movedTail=${boundaryResult.movedTail}, movedHead=${boundaryResult.movedHead}`);
+				const splitResult = splitYouTubeASRLongParagraphs(body, 40);
+				Console.info(`YouTube ASR v29 fallback long-cue split: input=${splitResult.input}, output=${splitResult.output}, split=${splitResult.split}, shortened=${splitResult.shortened}`);
+			}
 		}
 	} else if (isBroadcastCaption) {
 		const normalizedParagraphs = disableYouTubeBroadcastRollingWindow(body);
@@ -112,9 +117,9 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "30";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "31";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
-	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "timed-stream-v30-with-v29-fallback" : "unchanged";
+	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "paragraph-stream-v31-with-v30-v29-fallback" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-Broadcast-Mode"] = isBroadcastCaption ? "fixed-two-lines-no-roll-up" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = isAutomaticCaption ? "automatic" : isBroadcastCaption ? "broadcast" : "official";
 	$response.headers["X-Hey-Sayiwanna-XML-Original-Length"] = String(originalXMLLength);
@@ -191,7 +196,7 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/30",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/31",
 			Referer: "https://translate.google.com",
 		},
 		timeout: 15,
