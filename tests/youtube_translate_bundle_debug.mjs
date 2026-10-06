@@ -44,6 +44,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 			: new URL(request.url).searchParams.get("q");
 		const sourceRows = String(sourceText ?? "").split(/\r/);
 		if (typeof requestFailure === "function" && requestFailure({ method, request, sourceRows })) {
+			activeRequests -= 1;
 			callback(new Error("Synthetic translation request failure"));
 			return;
 		}
