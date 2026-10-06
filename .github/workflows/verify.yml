@@ -6,15 +6,13 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -38,15 +36,5 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
       - name: Test module independence
         run: npm run test:independence
-      - name: Commit generated bundles to PR branch
-        if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v32.bundle.js
-          if ! git diff --cached --quiet; then
-            git commit -m "build: refresh generated v32 bundle"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
       - name: Confirm generated bundles are committed
         run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v32.bundle.js
