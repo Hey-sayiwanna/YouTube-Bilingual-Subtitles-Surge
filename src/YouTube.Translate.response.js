@@ -185,11 +185,17 @@ async function Translator(method = "Part", text = [], isAutomaticCaption = false
 
 async function translateBatch(part, label, useBoundedQueue, captionType, options = {}) {
 	let translation;
+	const encodedLength = encodeURIComponent(part.join("\r")).length;
+	const isLargePostBatch = Boolean(options.allowPost) && encodedLength > SETTINGS.OfficialPostEncodedThreshold;
 	try {
-		translation = await retry(() => googleTranslate(part, options), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+		// Large POST batches are latency-sensitive: if one fails, split it
+		// immediately instead of spending seconds retrying the same payload.
+		translation = isLargePostBatch
+			? await googleTranslate(part, options)
+			: await retry(() => googleTranslate(part, options), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
 	} catch (error) {
-		if (!options.allowPost || part.length <= 1) throw error;
-		Console.warn(`YouTube ${captionType} large batch failed: batch=${label}, rows=${part.length}; split smaller`);
+		if (!isLargePostBatch || part.length <= 1) throw error;
+		Console.warn(`YouTube ${captionType} large batch failed: batch=${label}, rows=${part.length}, encoded=${encodedLength}; split immediately`);
 		return splitAndTranslateBatch(part, label, useBoundedQueue, captionType, options);
 	}
 	if (translation.length === part.length) return translation;
