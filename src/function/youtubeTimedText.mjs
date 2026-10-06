@@ -569,7 +569,7 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		return { strong: true, reason: "subordinate-clause" };
 	}
 
-	if (new Set(["than", "as", "of", "for", "with", "from", "at", "on", "in", "by", "into", "over", "under", "between", "through"]).has(rightFirst)) {
+	if (new Set(["to", "than", "as", "of", "for", "with", "from", "at", "on", "in", "by", "into", "over", "under", "between", "through"]).has(rightFirst)) {
 		return { forbid: true, reason: "right-dependent-phrase" };
 	}
 
