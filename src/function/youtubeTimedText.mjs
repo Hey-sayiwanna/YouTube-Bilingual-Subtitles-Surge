@@ -379,7 +379,13 @@ export function resegmentYouTubeASRByParagraphTiming(body, options = {}) {
 			continue;
 		}
 		const previous = region.at(-1);
-		if (previous && unit.start - previous.end > strongGap) flushRegion();
+		if (
+			previous &&
+			(
+				unit.start - previous.end > strongGap ||
+				(!useEstimatedWordTiming && unit.paragraphIndex !== previous.paragraphIndex)
+			)
+		) flushRegion();
 		region.push(unit);
 	}
 	flushRegion();
