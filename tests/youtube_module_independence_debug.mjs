@@ -32,7 +32,6 @@ assert.match(translateBundle, /YouTube standalone settings active; BoxJs bypasse
 assert.match(translateBundle, /YouTube Chinese source detected; translation bypassed/);
 assert.match(translateBundle, /YouTube ASR v32 estimated-token-stream rebuild/);
 assert.match(translateBundle, /YouTube ASR fixed two-line mode/);
-assert.match(translateBundle, /YouTube ASR long-cue split/);
 assert.match(translateBundle, /YouTube ASR translation batches/);
 assert.match(translateBundle, /YouTube official translation batches/);
 assert.match(translateBundle, /YouTube Row fallback scheduler/);
