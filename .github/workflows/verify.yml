@@ -6,31 +6,19 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Commit generated v33 bundle
-        if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -n "$(git status --porcelain -- Translate.response.youtube-fix-v33.bundle.js)" ]; then
-            git add Translate.response.youtube-fix-v33.bundle.js
-            git commit -m "build: refresh generated v33 bundle"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
       - name: Test request path
         run: npm run test:request
       - name: Test XML transforms
