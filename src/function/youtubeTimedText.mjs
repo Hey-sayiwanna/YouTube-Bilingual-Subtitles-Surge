@@ -550,8 +550,9 @@ function scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, options) {
 	else if (weakPunctuation) cost -= 24;
 	if (gapAfter > maximumGap) cost -= 60;
 
-	// YouTube's original <p> boundary is only a weak visual hint.
-	if (boundaryAtParagraphEnd) cost -= 4;
+	// YouTube's original <p> boundary is a secondary hint: weaker than grammar,
+	// but useful after an orphan fragment has been absorbed into its left context.
+	if (boundaryAtParagraphEnd) cost -= 28;
 
 	// Grammar decides no-punctuation boundaries.
 	if (grammarBoundary?.forbid) cost += 220;
