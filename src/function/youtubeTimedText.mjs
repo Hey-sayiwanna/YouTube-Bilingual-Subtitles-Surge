@@ -569,6 +569,10 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		return { strong: true, reason: "subordinate-clause" };
 	}
 
+	if (new Set(["than", "as", "of", "for", "with", "from", "at", "on", "in", "by", "into", "over", "under", "between", "through"]).has(rightFirst)) {
+		return { forbid: true, reason: "right-dependent-phrase" };
+	}
+
 	if (rightFirst === "then" && hasYouTubeASRClauseCore(rightWords.slice(1, 7))) {
 		return { strong: true, reason: "then-clause" };
 	}
@@ -593,6 +597,7 @@ function extractYouTubeASRWords(text) {
 function isYouTubeASRHardContinuation(last, previous) {
 	if (!last) return false;
 	if (isYouTubeASRFunctionWord(last)) return true;
+	if (isYouTubeASRFiniteVerbMarker(last)) return true;
 	if (last === "to") return true;
 	if (previous === "to" && !isYouTubeASRFunctionWord(last)) return true;
 	return false;
@@ -605,7 +610,7 @@ function isYouTubeASRFunctionWord(word) {
 		"this", "that", "these", "those",
 		"of", "for", "with", "from", "at", "on", "in", "by", "into", "over", "under", "between", "through", "about", "around", "without",
 		"and", "or", "but", "so", "because", "if", "when", "while", "although", "though", "unless", "since", "whereas",
-		"who", "which", "whose", "whom",
+		"who", "which", "whose", "whom", "than", "as",
 	]).has(word);
 }
 
