@@ -30,7 +30,7 @@ const SETTINGS = Object.freeze({
 	ASRQueueThreshold: 24,
 	OfficialOversizeThreshold: 6000,
 	OfficialMaxEncodedLength: 2400,
-	OfficialMaxConcurrency: 2,
+	OfficialMaxConcurrency: 4,
 	BroadcastBatchSize: 120,
 	BroadcastMaxConcurrency: 6,
 	BroadcastQueueThreshold: 24,
@@ -175,14 +175,26 @@ async function Translator(method = "Part", text = [], isAutomaticCaption = false
 }
 
 async function translateBatch(part, label, useBoundedQueue, captionType) {
-	const translation = await retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+	let translation;
+	try {
+		translation = await retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+	} catch (error) {
+		if (part.length <= 1) throw error;
+		Console.warn(`YouTube ${captionType} batch failed after retries: batch=${label}, rows=${part.length}; retry smaller`);
+		return await translateSmallerBatch(part, label, useBoundedQueue, captionType);
+	}
 	if (translation.length === part.length) return translation;
 	Console.warn(`YouTube ${captionType} batch mismatch: batch=${label}, expected=${part.length}, received=${translation.length}; retry smaller`);
 	if (part.length <= 1) return [normalizeTranslation(translation)];
+	return await translateSmallerBatch(part, label, useBoundedQueue, captionType);
+}
 
+async function translateSmallerBatch(part, label, useBoundedQueue, captionType) {
 	const middle = Math.ceil(part.length / 2);
 	const halves = [part.slice(0, middle), part.slice(middle)];
 	if (useBoundedQueue) {
+		// Stay inside the current bounded worker: splitting one failed batch must
+		// not multiply the global request concurrency.
 		const first = await translateBatch(halves[0], `${label}.1`, true, captionType);
 		const second = await translateBatch(halves[1], `${label}.2`, true, captionType);
 		return [...first, ...second];
