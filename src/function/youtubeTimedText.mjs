@@ -652,8 +652,22 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		return { weak: true, reason: "coordinated-clause" };
 	}
 
-	// A complete subject-predicate sequence can start a fresh cue even if it begins with his/its/the.
-	if (hasYouTubeASRClauseCore(rightWords.slice(0, 8)) && currentWidth >= 34) {
+	// A fresh content-word subject followed by a predicate is a strong new-clause signal
+	// in punctuation-free ASR, e.g. "... come at him | khabib got a hold ...".
+	const rightHasClauseCore = hasYouTubeASRClauseCore(rightWords.slice(0, 8));
+	if (
+		rightHasClauseCore &&
+		currentWidth >= 30 &&
+		!isYouTubeASRPersonalSubject(rightFirst) &&
+		!isYouTubeASRFunctionWord(rightFirst) &&
+		!isYouTubeASRAuxiliary(rightFirst)
+	) {
+		return { strong: true, reason: "content-subject-clause" };
+	}
+
+	// Other complete subject-predicate sequences are still useful, but weaker,
+	// so ordinary embedded pronoun clauses are not over-split.
+	if (rightHasClauseCore && currentWidth >= 34) {
 		return { weak: true, reason: "independent-clause" };
 	}
 
