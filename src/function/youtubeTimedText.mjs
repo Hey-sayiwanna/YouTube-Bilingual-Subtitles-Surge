@@ -238,6 +238,68 @@ function splitOfficialCaptionAtStrongSentenceBoundary(text, minimumWidth) {
 	return [text.slice(0, end).trim(), text.slice(end).trim()];
 }
 
+export function rebalanceYouTubeASRSentenceBoundaries(body, maximumGap = 450) {
+	const timedTextBody = body?.timedtext?.body;
+	if (!timedTextBody) return { movedTail: 0, movedHead: 0 };
+
+	let paragraphs = timedTextBody.p;
+	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
+	let movedTail = 0;
+	let movedHead = 0;
+
+	for (let index = 0; index < paragraphs.length - 1; index += 1) {
+		const current = paragraphs[index];
+		const next = paragraphs[index + 1];
+		const currentParsed = readYouTubeTimedTextParagraph(current);
+		const nextParsed = readYouTubeTimedTextParagraph(next);
+		let currentText = normalizeText(currentParsed.text).trim();
+		let nextText = normalizeText(nextParsed.text).trim();
+		if (!currentText || !nextText || currentText === ZERO_WIDTH_SPACE || nextText === ZERO_WIDTH_SPACE) continue;
+
+		const currentStart = parsePositiveInteger(current?.["@t"], true);
+		const currentDuration = parsePositiveInteger(current?.["@d"]);
+		const nextStart = parsePositiveInteger(next?.["@t"], true);
+		const currentEnd = Number.isFinite(currentStart) && Number.isFinite(currentDuration) ? currentStart + currentDuration : undefined;
+		const gap = Number.isFinite(currentEnd) && Number.isFinite(nextStart) ? nextStart - currentEnd : 0;
+		if (Number.isFinite(gap) && Math.abs(gap) > maximumGap) continue;
+
+		const trailing = currentText.match(/^(.*?[.!?。！？…]+)[\\s]+([^.!?。！？…]+)$/u);
+		if (trailing) {
+			const tail = trailing[2].trim();
+			if (countCaptionWords(tail) <= 2 && measureYouTubeCaptionWidth(tail) <= 14 && !/[,:;，；：]$/u.test(tail)) {
+				currentText = trailing[1].trim();
+				nextText = joinYouTubeCaptionFragments(tail, nextText);
+				setYouTubeTimedTextParagraphText(current, currentText, currentParsed.segmented);
+				setYouTubeTimedTextParagraphText(next, nextText, nextParsed.segmented);
+				movedHead += 1;
+				continue;
+			}
+		}
+
+		if (!/[.!?。！？…]["'’”)]*$/u.test(currentText)) {
+			const leading = nextText.match(/^(.{1,24}?[.!?。！？…]+)(?:\\s+|$)(.*)$/u);
+			if (leading) {
+				const head = leading[1].trim();
+				const rest = leading[2].trim();
+				if (rest && countCaptionWords(head) <= 2 && measureYouTubeCaptionWidth(head) <= 18 && measureYouTubeCaptionWidth(currentText) + 1 + measureYouTubeCaptionWidth(head) <= 56) {
+					currentText = joinYouTubeCaptionFragments(currentText, head);
+					nextText = rest;
+					setYouTubeTimedTextParagraphText(current, currentText, currentParsed.segmented);
+					setYouTubeTimedTextParagraphText(next, nextText, nextParsed.segmented);
+					movedTail += 1;
+				}
+			}
+		}
+	}
+
+	return { movedTail, movedHead };
+}
+
+function countCaptionWords(text) {
+	const words = normalizeText(text).trim().match(/[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*/gu);
+	return words?.length ?? 0;
+}
+
 export function splitYouTubeASRLongParagraphs(body, maximumWidth = 40) {
 	const timedTextBody = body?.timedtext?.body;
 	if (!timedTextBody) return { input: 0, output: 0, split: 0, shortened: 0 };
@@ -299,42 +361,60 @@ export function splitYouTubeASRLongParagraphs(body, maximumWidth = 40) {
 	return { input: paragraphs.length, output: output.length, split, shortened };
 }
 
-export function splitYouTubeCaptionText(text, maximumWidth = 40) {
+export function splitYouTubeCaptionText(text, softWidth = 40, comfortableWidth = 56, hardWidth = 64) {
 	text = normalizeText(text).trim();
-	if (!text || text === ZERO_WIDTH_SPACE || measureYouTubeCaptionWidth(text) <= maximumWidth) return text ? [text] : [];
+	if (!text || text === ZERO_WIDTH_SPACE || measureYouTubeCaptionWidth(text) <= comfortableWidth) return text ? [text] : [];
 
-	const characters = Array.from(text);
 	const parts = [];
-	let start = 0;
-	while (start < characters.length) {
-		let width = 0;
-		let index = start;
-		let naturalBreak = -1;
-		while (index < characters.length) {
-			const nextWidth = measureYouTubeCaptionWidth(characters[index]);
-			if (width + nextWidth > maximumWidth && index > start) break;
-			width += nextWidth;
-			index += 1;
-			if (isNaturalCaptionBreak(characters[index - 1])) naturalBreak = index;
-		}
-
-		if (index >= characters.length) {
-			const remainder = characters.slice(start).join("").trim();
-			if (remainder) parts.push(remainder);
-			break;
-		}
-
-		let end = index;
-		if (naturalBreak > start) {
-			const naturalWidth = measureYouTubeCaptionWidth(characters.slice(start, naturalBreak).join(""));
-			if (naturalWidth >= maximumWidth * 0.55) end = naturalBreak;
-		}
-		const part = characters.slice(start, end).join("").trim();
+	let remaining = text;
+	while (measureYouTubeCaptionWidth(remaining) > hardWidth) {
+		const end = chooseSemanticCaptionBreak(remaining, softWidth, comfortableWidth, hardWidth);
+		if (!end || end >= remaining.length) break;
+		const part = remaining.slice(0, end).trim();
 		if (part) parts.push(part);
-		start = end;
-		while (start < characters.length && /\s/u.test(characters[start])) start += 1;
+		remaining = remaining.slice(end).trim();
 	}
+	if (remaining) parts.push(remaining);
 	return parts;
+}
+
+function chooseSemanticCaptionBreak(text, softWidth, comfortableWidth, hardWidth) {
+	const candidates = [];
+	for (const match of text.matchAll(/[.!?。！？…]+["'’”)]*\\s*/gu)) {
+		const end = (match.index ?? 0) + match[0].length;
+		const width = measureYouTubeCaptionWidth(text.slice(0, end));
+		if (width >= softWidth * 0.55 && width <= hardWidth) candidates.push({ end, width, rank: 0 });
+	}
+	for (const match of text.matchAll(/[,;:，；：]+\\s*/gu)) {
+		const end = (match.index ?? 0) + match[0].length;
+		const width = measureYouTubeCaptionWidth(text.slice(0, end));
+		if (width >= softWidth * 0.7 && width <= hardWidth) candidates.push({ end, width, rank: 1 });
+	}
+	for (const match of text.matchAll(/\\s+/gu)) {
+		const end = (match.index ?? 0) + match[0].length;
+		const width = measureYouTubeCaptionWidth(text.slice(0, end));
+		if (width >= softWidth * 0.8 && width <= hardWidth) candidates.push({ end, width, rank: 2 });
+	}
+	if (!candidates.length) return findHardCaptionBreak(text, hardWidth);
+
+	const viableStrong = candidates.filter(candidate => candidate.rank === 0 && candidate.width <= comfortableWidth);
+	const viableWeak = candidates.filter(candidate => candidate.rank === 1 && candidate.width <= comfortableWidth);
+	const pool = viableStrong.length ? viableStrong : viableWeak.length ? viableWeak : candidates;
+	pool.sort((a, b) => a.rank - b.rank || Math.abs(a.width - softWidth) - Math.abs(b.width - softWidth));
+	return pool[0].end;
+}
+
+function findHardCaptionBreak(text, hardWidth) {
+	const characters = Array.from(text);
+	let width = 0;
+	let end = 0;
+	for (let index = 0; index < characters.length; index += 1) {
+		const nextWidth = measureYouTubeCaptionWidth(characters[index]);
+		if (width + nextWidth > hardWidth && index > 0) break;
+		width += nextWidth;
+		end = index + 1;
+	}
+	return end;
 }
 
 export function measureYouTubeCaptionWidth(text) {
