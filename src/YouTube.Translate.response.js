@@ -3,12 +3,14 @@ import XML from "./XML/XML.mjs";
 import {
 	disableYouTubeASRRollingWindow,
 	disableYouTubeBroadcastRollingWindow,
+	rebalanceYouTubeASRSentenceBoundaries,
 	detectYouTubeChineseCaption,
 	ensureYouTubeTimedTextRows,
 	mergeYouTubeOfficialSentenceFragments,
 	readYouTubeTimedTextParagraph,
 	shortenYouTubeBroadcastOverlaps,
 	splitYouTubeASRLongParagraphs,
+	splitYouTubeOfficialLongParagraphs,
 	writeYouTubeTimedTextParagraph,
 } from "./function/youtubeTimedText.mjs";
 
@@ -26,13 +28,14 @@ const SETTINGS = Object.freeze({
 	ASRQueueThreshold: 24,
 	OfficialOversizeThreshold: 6000,
 	OfficialMaxEncodedLength: 2400,
+	OfficialMaxConcurrency: 2,
 	BroadcastBatchSize: 120,
 	BroadcastMaxConcurrency: 6,
 	BroadcastQueueThreshold: 24,
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 26 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 29 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -43,13 +46,13 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const isAutomaticCaption = requestURL.searchParams.get("kind") === "asr";
 	const isBroadcastCaption = !isAutomaticCaption && detectYouTubeBroadcastCaption(requestURL, body);
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 26 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 29 skipped: response is not timedtext XML");
 		return;
 	}
 	const chineseSource = detectYouTubeChineseCaption(requestURL, body);
 	if (chineseSource.detected) {
 		$response.headers = $response.headers ?? {};
-		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "26";
+		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "29";
 		$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 		$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = "chinese-pass-through";
 		$response.headers["X-Hey-Sayiwanna-Chinese-Source"] = chineseSource.reason;
@@ -61,6 +64,8 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	if (isAutomaticCaption) {
 		const normalizedParagraphs = disableYouTubeASRRollingWindow(body);
 		Console.info(`YouTube ASR fixed two-line mode: ${normalizedParagraphs} paragraphs`);
+		const boundaryResult = rebalanceYouTubeASRSentenceBoundaries(body, 450);
+		Console.info(`YouTube ASR sentence rebalance: movedTail=${boundaryResult.movedTail}, movedHead=${boundaryResult.movedHead}`);
 		const splitResult = splitYouTubeASRLongParagraphs(body, 40);
 		Console.info(`YouTube ASR long-cue split: input=${splitResult.input}, output=${splitResult.output}, split=${splitResult.split}, shortened=${splitResult.shortened}`);
 	} else if (isBroadcastCaption) {
@@ -71,6 +76,8 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	} else {
 		const mergeResult = mergeYouTubeOfficialSentenceFragments(body, 52);
 		Console.info(`YouTube official sentence grouping: input=${mergeResult.input}, output=${mergeResult.output}, merged=${mergeResult.merged}`);
+		const officialSplit = splitYouTubeOfficialLongParagraphs(body, 70);
+		Console.info(`YouTube official long-cue split: input=${officialSplit.input}, output=${officialSplit.output}, split=${officialSplit.split}`);
 	}
 	let paragraphs = body?.timedtext?.body?.p;
 	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
@@ -100,7 +107,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "26";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "29";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "fixed-two-lines-split-long-cues" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-Broadcast-Mode"] = isBroadcastCaption ? "fixed-two-lines-no-roll-up" : "unchanged";
@@ -115,8 +122,8 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 async function Translator(method = "Part", text = [], isAutomaticCaption = false, isBroadcastCaption = false) {
 	Console.info(`YouTube standalone translator: method=${method}, source=${SETTINGS.Source}, target=${SETTINGS.Target}`);
-	const maximumConcurrency = isBroadcastCaption ? SETTINGS.BroadcastMaxConcurrency : SETTINGS.ASRMaxConcurrency;
-	const queueThreshold = isBroadcastCaption ? SETTINGS.BroadcastQueueThreshold : SETTINGS.ASRQueueThreshold;
+	const maximumConcurrency = isBroadcastCaption ? SETTINGS.BroadcastMaxConcurrency : isAutomaticCaption ? SETTINGS.ASRMaxConcurrency : SETTINGS.OfficialMaxConcurrency;
+	const queueThreshold = isBroadcastCaption ? SETTINGS.BroadcastQueueThreshold : isAutomaticCaption ? SETTINGS.ASRQueueThreshold : 0;
 	if (method === "Row") {
 		const translateRow = row => retry(() => googleTranslate(row), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
 		if (text.length > queueThreshold) {
@@ -142,13 +149,13 @@ async function Translator(method = "Part", text = [], isAutomaticCaption = false
 		if (oversizedBatches) Console.info(`YouTube official oversized batch guard: split=${oversizedBatches}, batches=${parts.length}, splitMaxEncoded=${SETTINGS.OfficialMaxEncodedLength}`);
 	}
 	const captionType = isAutomaticCaption ? "ASR" : isBroadcastCaption ? "broadcast" : "official";
-	const useBoundedQueue = parts.length > queueThreshold;
+	const useBoundedQueue = isAutomaticCaption || isBroadcastCaption ? parts.length > queueThreshold : parts.length > 1;
 	if (isAutomaticCaption) {
 		Console.info(`YouTube ASR translation batches: rows=${text.length}, batches=${parts.length}, maxEncoded=${SETTINGS.ASRMaxEncodedLength}, scheduler=${useBoundedQueue ? `bounded-${SETTINGS.ASRMaxConcurrency}` : "direct"}`);
 	} else if (isBroadcastCaption) {
 		Console.info(`YouTube broadcast translation batches: rows=${text.length}, batches=${parts.length}, batchSize=${SETTINGS.BroadcastBatchSize}, scheduler=${useBoundedQueue ? `bounded-${SETTINGS.BroadcastMaxConcurrency}` : "direct"}`);
 	} else if (useBoundedQueue) {
-		Console.info(`YouTube official translation batches: rows=${text.length}, batches=${parts.length}, maxBatchRows=120, scheduler=bounded-${SETTINGS.ASRMaxConcurrency}`);
+		Console.info(`YouTube official translation batches: rows=${text.length}, batches=${parts.length}, maxBatchRows=120, scheduler=bounded-${SETTINGS.OfficialMaxConcurrency}`);
 	}
 	const translatePart = (part, index) => translateBatch(part, `${index + 1}/${parts.length}`, useBoundedQueue, captionType);
 	const translatedParts = useBoundedQueue
@@ -179,9 +186,10 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/26",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/29",
 			Referer: "https://translate.google.com",
 		},
+		timeout: 15,
 	};
 	const response = await fetch(request);
 	const body = JSON.parse(response.body);
