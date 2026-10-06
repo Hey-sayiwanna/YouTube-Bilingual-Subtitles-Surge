@@ -10,6 +10,8 @@ const ipadMergedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format
 const hugeSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 3711 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>자동 자막 ${index + 1}</s></p>`).join("")}</body></timedtext>`;
 const shortOfficialFragmentsSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="1000" d="1000">This is one</p><p t="2000" d="1100">complete official</p><p t="3100" d="900">caption.</p><p t="4000" d="900">Next sentence.</p></body></timedtext>`;
 const largeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 121 }, (_, index) => `<p t="${index * 2000}" d="1900">Official caption ${index + 1}.</p>`).join("")}</body></timedtext>`;
+const officialConcurrencySrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 481 }, (_, index) => `<p t="${index * 2000}" d="1900">Concurrency official caption ${index + 1}.</p>`).join("")}</body></timedtext>`;
+const officialNetworkRecoverySrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 121 }, (_, index) => `<p t="${index * 2000}" d="1900">Network recovery official caption ${index + 1}.</p>`).join("")}</body></timedtext>`;
 const hugeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 5578 }, (_, index) => `<p t="${index * 2000}" d="1900">Long movie official caption ${index + 1}.</p>`).join("")}</body></timedtext>`;
 const largeBroadcastSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><ws id="1" mh="2" ju="0" sd="3"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><w t="0" id="1" wp="1" ws="1"/>${Array.from({ length: 3001 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>Broadcast caption ${index + 1}</s></p>`).join("")}</body></timedtext>`;
 const simplifiedChineseSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3000">这是简体中文字幕，不需要再次翻译。</p></body></timedtext>`;
@@ -17,7 +19,7 @@ const ufcParagraphTimedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext
 const northKoreaParagraphTimedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="0" d="1680"><s>This is everything that happened at the</s></p><p t="1680" d="1720"><s>North Korean border. First, I took a</s></p><p t="3400" d="1680"><s>boat and crossed into the North Korean</s></p><p t="5080" d="2200"><s>border. I saw many apartments and</s></p><p t="7280" d="2000"><s>soldiers who waved at us, but no other</s></p><p t="9280" d="2200"><s>people or signs of life, which felt</s></p><p t="11480" d="1760"><s>strange.</s></p></body></timedtext>`;
 const traditionalChineseSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3000">這是繁體中文字幕，不需要再次翻譯。</p></body></timedtext>`;
 
-async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0 }) {
+async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0, requestFailure = null }) {
 	const translateRequestURLs = [];
 	let activeRequests = 0;
 	let maximumActiveRequests = 0;
@@ -39,9 +41,14 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 			activeRequests += 1;
 			maximumActiveRequests = Math.max(maximumActiveRequests, activeRequests);
 			const sourceRows = new URL(request.url).searchParams.get("q").split(/\r/);
+			const shouldFail = typeof requestFailure === "function" ? requestFailure(sourceRows, translateRequestURLs.length) : false;
 			const translated = typeof translation === "function" ? translation(sourceRows) : translation;
 			const respond = () => {
 				activeRequests -= 1;
+				if (shouldFail) {
+					callback(new Error("Injected translation network failure"));
+					return;
+				}
 				callback(null, { status: 200, headers: {} }, JSON.stringify([[[translated, "source", null, null]], null, "ko"]));
 			};
 			if (responseDelay > 0) setTimeout(respond, responseDelay);
@@ -55,12 +62,12 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v33.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../Translate.response.youtube-fix-v34.bundle.js?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
 		new Promise((_, reject) => {
-			timeout = setTimeout(() => reject(new Error(`${testName} bundle test timed out`)), 5000);
+			timeout = setTimeout(() => reject(new Error(`${testName} bundle test timed out`)), 9000);
 		}),
 	]);
 	clearTimeout(timeout);
@@ -76,9 +83,9 @@ const automatic = await runBundle({
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "33");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "34");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "punctuation-grammar-v33");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "punctuation-grammar-v34");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
 assert.equal(automaticBody.w, undefined);
 assert.ok(automaticBody.p.every(paragraph => paragraph["@w"] === undefined && paragraph["@a"] === undefined));
@@ -89,24 +96,24 @@ assert.match(automatic.output.body, /두 번째 문장&#x000A;第二句/);
 const ufcParagraphTimed = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=ufc-real&caps=asr&lang=en&format=srv3&subtype=Translate",
 	translation: rows => rows.map((row, index) => `UFC译文${index + 1}`).join("\r"),
-	testName: "v33-ufc-paragraph-timing",
+	testName: "v34-ufc-paragraph-timing",
 	body: ufcParagraphTimedSrv3,
 });
 const ufcBody = XML.parse(ufcParagraphTimed.output.body).timedtext.body;
-assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "punctuation-grammar-v33");
-assert.ok(ufcBody.p.length < 6, "v33 must remove empty display events and merge continuous ASR fragments");
+assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "punctuation-grammar-v34");
+assert.ok(ufcBody.p.length < 6, "v34 must remove empty display events and merge continuous ASR fragments");
 assert.match(ufcParagraphTimed.output.body, /instead of waiting for khabib to come at him&#x000A;UFC译文1/, "orphan 'him' must be translated together with 'come at'");
-assert.doesNotMatch(ufcParagraphTimed.output.body, /<s>him&#x000A;/, "v33 must not leave 'him' as a standalone translated cue");
+assert.doesNotMatch(ufcParagraphTimed.output.body, /<s>him&#x000A;/, "v34 must not leave 'him' as a standalone translated cue");
 for (let index = 0; index < ufcBody.p.length - 1; index += 1) {
 	const currentEnd = Number(ufcBody.p[index]["@t"]) + Number(ufcBody.p[index]["@d"] ?? 0);
 	const nextStart = Number(ufcBody.p[index + 1]["@t"]);
-	assert.ok(currentEnd <= nextStart, `v33 UFC cue ${index} overlaps cue ${index + 1}`);
+	assert.ok(currentEnd <= nextStart, `v34 UFC cue ${index} overlaps cue ${index + 1}`);
 }
 
 const northKoreaParagraphTimed = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=north-korea&caps=asr&lang=en&format=srv3&subtype=Translate",
 	translation: rows => rows.map((_, index) => `NK译文${index + 1}`).join("\r"),
-	testName: "v33-north-korea-estimated-token-timing",
+	testName: "v34-north-korea-estimated-token-timing",
 	body: northKoreaParagraphTimedSrv3,
 });
 const northBody = XML.parse(northKoreaParagraphTimed.output.body).timedtext.body;
@@ -115,13 +122,13 @@ const northOrigins = northParagraphs.map(paragraph => {
 	const text = paragraph?.s?.["#"] ?? paragraph?.["#"] ?? "";
 	return String(text).split("\n")[0];
 });
-assert.ok(northOrigins.includes("This is everything that happened at the North Korean border."), "v33 should move the sentence tail across the original p boundary");
-assert.ok(northOrigins.includes("First, I took a boat and crossed into the North Korean border."), "v33 should rebuild the next complete sentence across multiple p nodes");
-assert.ok(northParagraphs.every(paragraph => Number(paragraph["@d"] ?? 0) > 0), "v33 rebuilt cues must keep positive duration");
+assert.ok(northOrigins.includes("This is everything that happened at the North Korean border."), "v34 should move the sentence tail across the original p boundary");
+assert.ok(northOrigins.includes("First, I took a boat and crossed into the North Korean border."), "v34 should rebuild the next complete sentence across multiple p nodes");
+assert.ok(northParagraphs.every(paragraph => Number(paragraph["@d"] ?? 0) > 0), "v34 rebuilt cues must keep positive duration");
 for (let index = 0; index < northParagraphs.length - 1; index += 1) {
 	const currentEnd = Number(northParagraphs[index]["@t"]) + Number(northParagraphs[index]["@d"] ?? 0);
 	const nextStart = Number(northParagraphs[index + 1]["@t"]);
-	assert.ok(currentEnd <= nextStart, `v33 North Korea cue ${index} overlaps cue ${index + 1}`);
+	assert.ok(currentEnd <= nextStart, `v34 North Korea cue ${index} overlaps cue ${index + 1}`);
 }
 
 const longAutomatic = await runBundle({
@@ -133,9 +140,9 @@ const longAutomatic = await runBundle({
 const longParagraphs = XML.parse(longAutomatic.output.body).timedtext.body.p;
 const longOrigins = longParagraphs.map(paragraph => String(paragraph?.s?.["#"] ?? paragraph?.["#"] ?? "").split("\n")[0]);
 assert.ok(longParagraphs.length >= 3);
-assert.ok(longOrigins.every(text => Array.from(text).length <= 64), "v33 long ASR cues must stay inside the hard display limit");
-assert.ok(longOrigins.some(text => text.endsWith("before it overlaps.")), "v33 must preserve the strong sentence boundary");
-assert.equal(longOrigins.at(-1), "Next caption.", "v33 must not absorb a new sentence merely because it is short");
+assert.ok(longOrigins.every(text => Array.from(text).length <= 64), "v34 long ASR cues must stay inside the hard display limit");
+assert.ok(longOrigins.some(text => text.endsWith("before it overlaps.")), "v34 must preserve the strong sentence boundary");
+assert.equal(longOrigins.at(-1), "Next caption.", "v34 must not absorb a new sentence merely because it is short");
 for (let index = 0; index < longParagraphs.length - 1; index += 1) {
 	const currentEnd = Number(longParagraphs[index]["@t"]) + Number(longParagraphs[index]["@d"] ?? 0);
 	const nextStart = Number(longParagraphs[index + 1]["@t"]);
@@ -149,7 +156,7 @@ const official = await runBundle({
 	body: plainOfficialSrv3,
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "33");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "34");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Broadcast-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "official");
@@ -358,6 +365,29 @@ const oversizedBroadcast = await runBundle({
 assert.equal(oversizedBroadcast.translateRequestURLs.length, 2, "broadcast batches must not enter the new ordinary-official guard");
 assert.equal(new URL(oversizedBroadcast.translateRequestURLs[0]).searchParams.get("q").split(/\r/).length, 120);
 
+const officialConcurrencyProbe = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=official-concurrency&lang=en&format=srv3&subtype=Translate",
+	translation: rows => rows.map((_, index) => `并发探针译文${index + 1}`).join("\r"),
+	testName: "official-concurrency-four",
+	body: officialConcurrencySrv3,
+	concurrentRequestLimit: 50,
+	responseDelay: 20,
+});
+assert.equal(officialConcurrencyProbe.maximumActiveRequests, 4, `official translation must actually schedule four concurrent requests, received ${officialConcurrencyProbe.maximumActiveRequests}`);
+
+const officialNetworkRecovery = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=official-network-recovery&lang=en&format=srv3&subtype=Translate",
+	translation: rows => rows.map((_, index) => `网络恢复译文${index + 1}`).join("\r"),
+	testName: "official-network-failed-batch-split",
+	body: officialNetworkRecoverySrv3,
+	requestFailure: rows => rows.length === 120 && rows[0]?.includes("Network recovery official caption 1."),
+});
+const recoveryRequestRowCounts = officialNetworkRecovery.translateRequestURLs.map(url => new URL(url).searchParams.get("q").split(/\r/).length);
+assert.equal(recoveryRequestRowCounts.filter(count => count === 120).length, 4, "failed 120-row batch should exhaust its initial request plus three retries");
+assert.equal(recoveryRequestRowCounts.filter(count => count === 60).length, 2, "only the failed batch should be bisected into two 60-row retries");
+assert.equal(recoveryRequestRowCounts.filter(count => count === 1).length, 1, "the neighboring healthy batch must not be replayed");
+assert.equal((officialNetworkRecovery.output.body.match(/&#x000A;网络恢复译文/gu) ?? []).length, 121, "failed-batch recovery must preserve all official subtitle rows");
+
 let droppedOfficialRow = false;
 const hugeOfficialMismatch = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=movie&lang=en&format=srv3&subtype=Translate",
@@ -380,7 +410,7 @@ assert.equal(
 	"a single malformed long-movie batch should be recovered locally without retrying every subtitle row",
 );
 assert.ok(
-	hugeOfficialMismatch.maximumActiveRequests <= 6,
+	hugeOfficialMismatch.maximumActiveRequests <= 4,
 	`long official captions must use bounded concurrency, received ${hugeOfficialMismatch.maximumActiveRequests}`,
 );
 

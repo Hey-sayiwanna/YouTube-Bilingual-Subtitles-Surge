@@ -30,14 +30,14 @@ const SETTINGS = Object.freeze({
 	ASRQueueThreshold: 24,
 	OfficialOversizeThreshold: 6000,
 	OfficialMaxEncodedLength: 2400,
-	OfficialMaxConcurrency: 2,
+	OfficialMaxConcurrency: 4,
 	BroadcastBatchSize: 120,
 	BroadcastMaxConcurrency: 6,
 	BroadcastQueueThreshold: 24,
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 33 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 34 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -48,13 +48,13 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const isAutomaticCaption = detectYouTubeAutomaticCaption(requestURL);
 	const isBroadcastCaption = !isAutomaticCaption && detectYouTubeBroadcastCaption(requestURL, body);
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 33 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 34 skipped: response is not timedtext XML");
 		return;
 	}
 	const chineseSource = detectYouTubeChineseCaption(requestURL, body);
 	if (chineseSource.detected) {
 		$response.headers = $response.headers ?? {};
-		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "33";
+		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "34";
 		$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 		$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = "chinese-pass-through";
 		$response.headers["X-Hey-Sayiwanna-Chinese-Source"] = chineseSource.reason;
@@ -65,7 +65,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	ensureYouTubeTimedTextRows(body, 2);
 	if (isAutomaticCaption) {
 		const paragraphResegment = resegmentYouTubeASRByParagraphTiming(body);
-		Console.info(`YouTube ASR v33 punctuation-grammar rebuild: applied=${paragraphResegment.applied}, reason=${paragraphResegment.reason}, input=${paragraphResegment.input}, visible=${paragraphResegment.visible}, output=${paragraphResegment.output}, removedEmpty=${paragraphResegment.removedEmpty}, merged=${paragraphResegment.merged}`);
+		Console.info(`YouTube ASR v34 punctuation-grammar rebuild: applied=${paragraphResegment.applied}, reason=${paragraphResegment.reason}, input=${paragraphResegment.input}, visible=${paragraphResegment.visible}, output=${paragraphResegment.output}, removedEmpty=${paragraphResegment.removedEmpty}, merged=${paragraphResegment.merged}`);
 		const normalizedParagraphs = disableYouTubeASRRollingWindow(body);
 		Console.info(`YouTube ASR fixed two-line mode: ${normalizedParagraphs} paragraphs`);
 		if (!paragraphResegment.applied) {
@@ -117,9 +117,9 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "33";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "34";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
-	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "punctuation-grammar-v33" : "unchanged";
+	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "punctuation-grammar-v34" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-Broadcast-Mode"] = isBroadcastCaption ? "fixed-two-lines-no-roll-up" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = isAutomaticCaption ? "automatic" : isBroadcastCaption ? "broadcast" : "official";
 	$response.headers["X-Hey-Sayiwanna-XML-Original-Length"] = String(originalXMLLength);
@@ -175,14 +175,26 @@ async function Translator(method = "Part", text = [], isAutomaticCaption = false
 }
 
 async function translateBatch(part, label, useBoundedQueue, captionType) {
-	const translation = await retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+	let translation;
+	try {
+		translation = await retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+	} catch (error) {
+		if (part.length <= 1) throw error;
+		Console.warn(`YouTube ${captionType} batch failed after retries: batch=${label}, rows=${part.length}; retry smaller`);
+		return await translateSmallerBatch(part, label, useBoundedQueue, captionType);
+	}
 	if (translation.length === part.length) return translation;
 	Console.warn(`YouTube ${captionType} batch mismatch: batch=${label}, expected=${part.length}, received=${translation.length}; retry smaller`);
 	if (part.length <= 1) return [normalizeTranslation(translation)];
+	return await translateSmallerBatch(part, label, useBoundedQueue, captionType);
+}
 
+async function translateSmallerBatch(part, label, useBoundedQueue, captionType) {
 	const middle = Math.ceil(part.length / 2);
 	const halves = [part.slice(0, middle), part.slice(middle)];
 	if (useBoundedQueue) {
+		// Stay inside the current bounded worker: splitting one failed batch must
+		// not multiply the global request concurrency.
 		const first = await translateBatch(halves[0], `${label}.1`, true, captionType);
 		const second = await translateBatch(halves[1], `${label}.2`, true, captionType);
 		return [...first, ...second];
@@ -196,7 +208,7 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/33",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/34",
 			Referer: "https://translate.google.com",
 		},
 		timeout: 15,
