@@ -14,6 +14,7 @@ const hugeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext form
 const largeBroadcastSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><ws id="1" mh="2" ju="0" sd="3"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><w t="0" id="1" wp="1" ws="1"/>${Array.from({ length: 3001 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>Broadcast caption ${index + 1}</s></p>`).join("")}</body></timedtext>`;
 const simplifiedChineseSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3000">这是简体中文字幕，不需要再次翻译。</p></body></timedtext>`;
 const ufcParagraphTimedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="25910" d="1810"></p><p t="25920" d="1790"><s>instead of waiting for khabib to come at</s></p><p t="27710" d="3010"></p><p t="27720" d="3000"><s>him</s></p><p t="30749"></p><p t="30759" d="2831"><s>khabib got a hold of his ankles he's got</s></p><p t="33590" d="1930"></p><p t="33600" d="1910"><s>his</s></p><p t="35510" d="2250"></p><p t="35520" d="2230"><s>leg and what he's got to do is get his</s></p><p t="37750" d="2730"></p><p t="37760" d="2710"><s>left leg over the back ankle of khabib's</s></p></body></timedtext>`;
+const northKoreaParagraphTimedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="0" d="1680"><s>This is everything that happened at the</s></p><p t="1680" d="1720"><s>North Korean border. First, I took a</s></p><p t="3400" d="1680"><s>boat and crossed into the North Korean</s></p><p t="5080" d="2200"><s>border. I saw many apartments and</s></p><p t="7280" d="2000"><s>soldiers who waved at us, but no other</s></p><p t="9280" d="2200"><s>people or signs of life, which felt</s></p><p t="11480" d="1760"><s>strange.</s></p></body></timedtext>`;
 const traditionalChineseSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3000">這是繁體中文字幕，不需要再次翻譯。</p></body></timedtext>`;
 
 async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0 }) {
@@ -54,7 +55,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v31.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../Translate.response.youtube-fix-v32.bundle.js?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
@@ -68,16 +69,16 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 
 const automatic = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=test&kind=asr&lang=ko&format=srv3&subtype=Translate",
-	translation: "第一句\r\u200b\r第二句",
+	translation: rows => rows.map((_, index) => index === 0 ? "第一句" : "第二句").join("\r"),
 	testName: "automatic",
 });
 
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "31");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "32");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "paragraph-stream-v31-with-v30-v29-fallback");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "estimated-token-stream-v32-with-v30-v29-fallback");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
 assert.equal(automaticBody.w, undefined);
 assert.ok(automaticBody.p.every(paragraph => paragraph["@w"] === undefined && paragraph["@a"] === undefined));
@@ -86,20 +87,41 @@ assert.match(automatic.output.body, /두 번째 문장&#x000A;第二句/);
 
 
 const ufcParagraphTimed = await runBundle({
-	url: "https://www.youtube.com/api/timedtext?v=ufc-real&kind=asr&lang=en&format=srv3&subtype=Translate",
+	url: "https://www.youtube.com/api/timedtext?v=ufc-real&caps=asr&lang=en&format=srv3&subtype=Translate",
 	translation: rows => rows.map((row, index) => `UFC译文${index + 1}`).join("\r"),
-	testName: "v31-ufc-paragraph-timing",
+	testName: "v32-ufc-paragraph-timing",
 	body: ufcParagraphTimedSrv3,
 });
 const ufcBody = XML.parse(ufcParagraphTimed.output.body).timedtext.body;
-assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "paragraph-stream-v31-with-v30-v29-fallback");
-assert.ok(ufcBody.p.length < 6, "v31 must remove empty display events and merge continuous ASR fragments");
+assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "estimated-token-stream-v32-with-v30-v29-fallback");
+assert.ok(ufcBody.p.length < 6, "v32 must remove empty display events and merge continuous ASR fragments");
 assert.match(ufcParagraphTimed.output.body, /instead of waiting for khabib to come at him&#x000A;UFC译文1/, "orphan 'him' must be translated together with 'come at'");
-assert.doesNotMatch(ufcParagraphTimed.output.body, /<s>him&#x000A;/, "v31 must not leave 'him' as a standalone translated cue");
+assert.doesNotMatch(ufcParagraphTimed.output.body, /<s>him&#x000A;/, "v32 must not leave 'him' as a standalone translated cue");
 for (let index = 0; index < ufcBody.p.length - 1; index += 1) {
 	const currentEnd = Number(ufcBody.p[index]["@t"]) + Number(ufcBody.p[index]["@d"] ?? 0);
 	const nextStart = Number(ufcBody.p[index + 1]["@t"]);
-	assert.ok(currentEnd <= nextStart, `v31 UFC cue ${index} overlaps cue ${index + 1}`);
+	assert.ok(currentEnd <= nextStart, `v32 UFC cue ${index} overlaps cue ${index + 1}`);
+}
+
+const northKoreaParagraphTimed = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=north-korea&caps=asr&lang=en&format=srv3&subtype=Translate",
+	translation: rows => rows.map((_, index) => `NK译文${index + 1}`).join("\r"),
+	testName: "v32-north-korea-estimated-token-timing",
+	body: northKoreaParagraphTimedSrv3,
+});
+const northBody = XML.parse(northKoreaParagraphTimed.output.body).timedtext.body;
+const northParagraphs = Array.isArray(northBody.p) ? northBody.p : [northBody.p];
+const northOrigins = northParagraphs.map(paragraph => {
+	const text = paragraph?.s?.["#"] ?? paragraph?.["#"] ?? "";
+	return String(text).split("\n")[0];
+});
+assert.ok(northOrigins.includes("This is everything that happened at the North Korean border."), "v32 should move the sentence tail across the original p boundary");
+assert.ok(northOrigins.includes("First, I took a boat and crossed into the North Korean border."), "v32 should rebuild the next complete sentence across multiple p nodes");
+assert.ok(northParagraphs.every(paragraph => Number(paragraph["@d"] ?? 0) > 0), "v32 rebuilt cues must keep positive duration");
+for (let index = 0; index < northParagraphs.length - 1; index += 1) {
+	const currentEnd = Number(northParagraphs[index]["@t"]) + Number(northParagraphs[index]["@d"] ?? 0);
+	const nextStart = Number(northParagraphs[index + 1]["@t"]);
+	assert.ok(currentEnd <= nextStart, `v32 North Korea cue ${index} overlaps cue ${index + 1}`);
 }
 
 const longAutomatic = await runBundle({
@@ -125,7 +147,7 @@ const official = await runBundle({
 	body: plainOfficialSrv3,
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "31");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "32");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Broadcast-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "official");
