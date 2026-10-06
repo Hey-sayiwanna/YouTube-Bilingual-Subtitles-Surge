@@ -780,7 +780,18 @@ function looksLikeYouTubeASRBarePredicate(words, predicateIndex) {
 	if (next === "to" || next === "that") return true;
 	if (/^(?:i|you|he|she|it|we|they)['’](?:m|re|ve|d|ll|s)$/u.test(next)) return true;
 	if (/^[a-z]+ing$/u.test(next)) return true;
+
+	// At the expected predicate slot, third-person/past morphology plus a
+	// dependent continuation is useful evidence without naming concrete verbs.
+	if (/^[a-z]+(?:s|ed)$/u.test(predicate) && isYouTubeASRPredicateContinuation(next)) return true;
 	return false;
+}
+
+function isYouTubeASRPredicateContinuation(word) {
+	if (!word) return false;
+	if (isYouTubeASRFunctionWord(word) || isYouTubeASRPersonalSubject(word)) return true;
+	if (new Set(["me", "him", "us", "them", "below", "above", "back", "away", "out", "up", "down", "off"]).has(word)) return true;
+	return /^[a-z]+(?:ing|ly)$/u.test(word);
 }
 
 function isYouTubeASRPersonalSubject(word) {
