@@ -295,6 +295,8 @@ export function resegmentYouTubeASRByParagraphTiming(body, options = {}) {
 		return { applied: false, reason: "no-visible-paragraphs", input: paragraphs.length, visible: 0, output: paragraphs.length, removedEmpty, merged: 0, split: 0, tokens: 0 };
 	}
 
+	const useEstimatedWordTiming = shouldUseYouTubeASREstimatedWordTiming(visible);
+
 	for (let index = 0; index < visible.length; index += 1) {
 		const item = visible[index];
 		const nextStart = visible[index + 1]?.start;
@@ -324,7 +326,11 @@ export function resegmentYouTubeASRByParagraphTiming(body, options = {}) {
 			continue;
 		}
 
-		const tokens = tokenizeYouTubeASRParagraph(item.text, hardWidth);
+		const tokens = useEstimatedWordTiming
+			? tokenizeYouTubeASRParagraph(item.text, hardWidth)
+			: item.width > hardWidth
+				? splitYouTubeCaptionText(item.text, 40, 56, hardWidth)
+				: [item.text];
 		if (!tokens.length) continue;
 		const weights = tokens.map(token => Math.max(1, measureYouTubeCaptionWidth(token)));
 		const totalWeight = weights.reduce((sum, width) => sum + width, 0);
@@ -406,7 +412,20 @@ export function resegmentYouTubeASRByParagraphTiming(body, options = {}) {
 		merged: Math.max(0, visible.length - output.length),
 		split: Math.max(0, output.length - visible.length),
 		tokens: units.length,
+		estimatedWordTiming: useEstimatedWordTiming,
 	};
+}
+
+function shouldUseYouTubeASREstimatedWordTiming(visible) {
+	const sample = visible.map(item => item.text).join(" ").slice(0, 4000);
+	let letters = 0;
+	let latin = 0;
+	for (const character of Array.from(sample)) {
+		if (!/\p{L}/u.test(character)) continue;
+		letters += 1;
+		if (/\p{Script=Latin}/u.test(character)) latin += 1;
+	}
+	return latin >= 8 && latin / Math.max(letters, 1) >= 0.55;
 }
 
 function tokenizeYouTubeASRParagraph(text, hardWidth) {
