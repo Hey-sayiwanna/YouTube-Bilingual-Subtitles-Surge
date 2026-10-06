@@ -30,6 +30,9 @@ const SETTINGS = Object.freeze({
 	ASRQueueThreshold: 24,
 	OfficialOversizeThreshold: 6000,
 	OfficialMaxEncodedLength: 2400,
+	OfficialLongTrackRows: 600,
+	OfficialLongMaxEncodedLength: 10000,
+	OfficialPostEncodedThreshold: 5000,
 	OfficialMaxConcurrency: 2,
 	BroadcastBatchSize: 120,
 	BroadcastMaxConcurrency: 6,
@@ -37,7 +40,7 @@ const SETTINGS = Object.freeze({
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 33 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 33.1 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -54,7 +57,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const chineseSource = detectYouTubeChineseCaption(requestURL, body);
 	if (chineseSource.detected) {
 		$response.headers = $response.headers ?? {};
-		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "33";
+		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "33.1";
 		$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 		$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = "chinese-pass-through";
 		$response.headers["X-Hey-Sayiwanna-Chinese-Source"] = chineseSource.reason;
@@ -117,7 +120,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "33";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "33.1";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "punctuation-grammar-v33" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-Broadcast-Mode"] = isBroadcastCaption ? "fixed-two-lines-no-roll-up" : "unchanged";
@@ -143,20 +146,26 @@ async function Translator(method = "Part", text = [], isAutomaticCaption = false
 		}
 		return await Promise.all(text.map(translateRow));
 	}
+	const isLongOfficialTrack = !isAutomaticCaption && !isBroadcastCaption && text.length >= SETTINGS.OfficialLongTrackRows;
 	let parts = isAutomaticCaption
 		? chunkByEncodedLength(text, SETTINGS.ASRMaxEncodedLength)
-		: chunk(text, isBroadcastCaption ? SETTINGS.BroadcastBatchSize : 120);
-	// Keep established 120-row batches unless an ordinary official request is
-	// unusually long. This is a conservative guard, not a Google API hard limit.
-	// Split translation requests only; caption text, order and timing stay intact.
+		: isLongOfficialTrack
+			? chunkByEncodedLength(text, SETTINGS.OfficialLongMaxEncodedLength)
+			: chunk(text, isBroadcastCaption ? SETTINGS.BroadcastBatchSize : 120);
+	// Ordinary official captions retain the conservative v33 guard. Very long
+	// official tracks use fewer, larger batches while keeping concurrency fixed.
 	if (!isAutomaticCaption && !isBroadcastCaption) {
-		let oversizedBatches = 0;
-		parts = parts.flatMap(part => {
-			if (part.length <= 1 || encodeURIComponent(part.join("\r")).length <= SETTINGS.OfficialOversizeThreshold) return [part];
-			oversizedBatches += 1;
-			return chunkByEncodedLength(part, SETTINGS.OfficialMaxEncodedLength);
-		});
-		if (oversizedBatches) Console.info(`YouTube official oversized batch guard: split=${oversizedBatches}, batches=${parts.length}, splitMaxEncoded=${SETTINGS.OfficialMaxEncodedLength}`);
+		if (isLongOfficialTrack) {
+			Console.info(`YouTube official long-track compaction: rows=${text.length}, batches=${parts.length}, maxEncoded=${SETTINGS.OfficialLongMaxEncodedLength}, concurrency=${SETTINGS.OfficialMaxConcurrency}`);
+		} else {
+			let oversizedBatches = 0;
+			parts = parts.flatMap(part => {
+				if (part.length <= 1 || encodeURIComponent(part.join("\r")).length <= SETTINGS.OfficialOversizeThreshold) return [part];
+				oversizedBatches += 1;
+				return chunkByEncodedLength(part, SETTINGS.OfficialMaxEncodedLength);
+			});
+			if (oversizedBatches) Console.info(`YouTube official oversized batch guard: split=${oversizedBatches}, batches=${parts.length}, splitMaxEncoded=${SETTINGS.OfficialMaxEncodedLength}`);
+		}
 	}
 	const captionType = isAutomaticCaption ? "ASR" : isBroadcastCaption ? "broadcast" : "official";
 	const useBoundedQueue = isAutomaticCaption || isBroadcastCaption ? parts.length > queueThreshold : parts.length > 1;
@@ -167,38 +176,62 @@ async function Translator(method = "Part", text = [], isAutomaticCaption = false
 	} else if (useBoundedQueue) {
 		Console.info(`YouTube official translation batches: rows=${text.length}, batches=${parts.length}, maxBatchRows=120, scheduler=bounded-${SETTINGS.OfficialMaxConcurrency}`);
 	}
-	const translatePart = (part, index) => translateBatch(part, `${index + 1}/${parts.length}`, useBoundedQueue, captionType);
+	const translatePart = (part, index) => translateBatch(part, `${index + 1}/${parts.length}`, useBoundedQueue, captionType, { allowPost: isLongOfficialTrack });
 	const translatedParts = useBoundedQueue
 		? await mapWithConcurrency(parts, maximumConcurrency, translatePart)
 		: await Promise.all(parts.map(translatePart));
 	return translatedParts.flat(Number.POSITIVE_INFINITY);
 }
 
-async function translateBatch(part, label, useBoundedQueue, captionType) {
-	const translation = await retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+async function translateBatch(part, label, useBoundedQueue, captionType, options = {}) {
+	let translation;
+	const encodedLength = encodeURIComponent(part.join("\r")).length;
+	const isLargePostBatch = Boolean(options.allowPost) && encodedLength > SETTINGS.OfficialPostEncodedThreshold;
+	try {
+		// Large POST batches are latency-sensitive: if one fails, split it
+		// immediately instead of spending seconds retrying the same payload.
+		translation = isLargePostBatch
+			? await googleTranslate(part, options)
+			: await retry(() => googleTranslate(part, options), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+	} catch (error) {
+		if (!isLargePostBatch || part.length <= 1) throw error;
+		Console.warn(`YouTube ${captionType} large batch failed: batch=${label}, rows=${part.length}, encoded=${encodedLength}; split immediately`);
+		return splitAndTranslateBatch(part, label, useBoundedQueue, captionType, options);
+	}
 	if (translation.length === part.length) return translation;
 	Console.warn(`YouTube ${captionType} batch mismatch: batch=${label}, expected=${part.length}, received=${translation.length}; retry smaller`);
 	if (part.length <= 1) return [normalizeTranslation(translation)];
+	return splitAndTranslateBatch(part, label, useBoundedQueue, captionType, options);
+}
 
+async function splitAndTranslateBatch(part, label, useBoundedQueue, captionType, options) {
 	const middle = Math.ceil(part.length / 2);
 	const halves = [part.slice(0, middle), part.slice(middle)];
 	if (useBoundedQueue) {
-		const first = await translateBatch(halves[0], `${label}.1`, true, captionType);
-		const second = await translateBatch(halves[1], `${label}.2`, true, captionType);
+		const first = await translateBatch(halves[0], `${label}.1`, true, captionType, options);
+		const second = await translateBatch(halves[1], `${label}.2`, true, captionType, options);
 		return [...first, ...second];
 	}
-	return await Promise.all(halves.map((half, index) => translateBatch(half, `${label}.${index + 1}`, false, captionType))).then(result => result.flat(Number.POSITIVE_INFINITY));
+	return await Promise.all(halves.map((half, index) => translateBatch(half, `${label}.${index + 1}`, false, captionType, options))).then(result => result.flat(Number.POSITIVE_INFINITY));
 }
 
-async function googleTranslate(text) {
+async function googleTranslate(text, options = {}) {
 	text = Array.isArray(text) ? text : [text];
+	const joinedText = text.join("\r");
+	const encodedText = encodeURIComponent(joinedText);
+	const usePost = Boolean(options.allowPost) && encodedText.length > SETTINGS.OfficialPostEncodedThreshold;
 	const request = {
-		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
+		method: usePost ? "POST" : "GET",
+		url: usePost
+			? "https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN"
+			: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodedText}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/33",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/33.1",
 			Referer: "https://translate.google.com",
+			...(usePost ? { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" } : {}),
 		},
+		...(usePost ? { body: `q=${encodedText}` } : {}),
 		timeout: 15,
 	};
 	const response = await fetch(request);

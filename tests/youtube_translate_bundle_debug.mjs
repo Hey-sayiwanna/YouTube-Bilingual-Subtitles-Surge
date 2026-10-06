@@ -17,8 +17,9 @@ const ufcParagraphTimedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext
 const northKoreaParagraphTimedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="0" d="1680"><s>This is everything that happened at the</s></p><p t="1680" d="1720"><s>North Korean border. First, I took a</s></p><p t="3400" d="1680"><s>boat and crossed into the North Korean</s></p><p t="5080" d="2200"><s>border. I saw many apartments and</s></p><p t="7280" d="2000"><s>soldiers who waved at us, but no other</s></p><p t="9280" d="2200"><s>people or signs of life, which felt</s></p><p t="11480" d="1760"><s>strange.</s></p></body></timedtext>`;
 const traditionalChineseSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3000">這是繁體中文字幕，不需要再次翻譯。</p></body></timedtext>`;
 
-async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0 }) {
+async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0, requestFailure = null }) {
 	const translateRequestURLs = [];
+	const translateRequests = [];
 	let activeRequests = 0;
 	let maximumActiveRequests = 0;
 	globalThis.$environment = { "surge-version": "5.0" };
@@ -29,23 +30,38 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 		headers: { "Content-Type": "text/xml; charset=utf-8" },
 		body,
 	};
+	const handleTranslateRequest = (method, request, callback) => {
+		translateRequestURLs.push(request.url);
+		translateRequests.push({ method, url: request.url, body: request.body ?? "" });
+		if (activeRequests >= concurrentRequestLimit) {
+			callback(new Error("Excessive concurrent requests"));
+			return;
+		}
+		activeRequests += 1;
+		maximumActiveRequests = Math.max(maximumActiveRequests, activeRequests);
+		const sourceText = method === "POST"
+			? new URLSearchParams(request.body ?? "").get("q")
+			: new URL(request.url).searchParams.get("q");
+		const sourceRows = String(sourceText ?? "").split(/\r/);
+		if (typeof requestFailure === "function" && requestFailure({ method, request, sourceRows })) {
+			activeRequests -= 1;
+			callback(new Error("Synthetic translation request failure"));
+			return;
+		}
+		const translated = typeof translation === "function" ? translation(sourceRows) : translation;
+		const respond = () => {
+			activeRequests -= 1;
+			callback(null, { status: 200, headers: {} }, JSON.stringify([[[translated, "source", null, null]], null, "ko"]));
+		};
+		if (responseDelay > 0) setTimeout(respond, responseDelay);
+		else respond();
+	};
 	globalThis.$httpClient = {
 		get(request, callback) {
-			translateRequestURLs.push(request.url);
-			if (activeRequests >= concurrentRequestLimit) {
-				callback(new Error("Excessive concurrent requests"));
-				return;
-			}
-			activeRequests += 1;
-			maximumActiveRequests = Math.max(maximumActiveRequests, activeRequests);
-			const sourceRows = new URL(request.url).searchParams.get("q").split(/\r/);
-			const translated = typeof translation === "function" ? translation(sourceRows) : translation;
-			const respond = () => {
-				activeRequests -= 1;
-				callback(null, { status: 200, headers: {} }, JSON.stringify([[[translated, "source", null, null]], null, "ko"]));
-			};
-			if (responseDelay > 0) setTimeout(respond, responseDelay);
-			else respond();
+			handleTranslateRequest("GET", request, callback);
+		},
+		post(request, callback) {
+			handleTranslateRequest("POST", request, callback);
 		},
 	};
 
@@ -55,7 +71,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v33.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../Translate.response.youtube-fix-v33.1.bundle.js?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
@@ -64,7 +80,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 		}),
 	]);
 	clearTimeout(timeout);
-	return { output, translateRequestURL: translateRequestURLs.at(-1), translateRequestURLs, maximumActiveRequests };
+	return { output, translateRequestURL: translateRequestURLs.at(-1), translateRequestURLs, translateRequests, maximumActiveRequests };
 }
 
 const automatic = await runBundle({
@@ -76,7 +92,7 @@ const automatic = await runBundle({
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "33");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "33.1");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "punctuation-grammar-v33");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
@@ -149,7 +165,7 @@ const official = await runBundle({
 	body: plainOfficialSrv3,
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "33");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "33.1");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Broadcast-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "official");
@@ -349,6 +365,54 @@ const borderlineOfficial = await runBundle({
 assert.equal(borderlineOfficial.translateRequestURLs.length, 1, "ordinary official batches below the oversize threshold must retain the original scheduling");
 assert.equal(XML.parse(borderlineOfficial.output.body).timedtext.body.p.length, 120);
 
+const thousandOfficialParagraphs = Array.from({ length: 1001 }, (_, index) =>
+	`<p t="${index * 2500}" d="1800">This is official subtitle sentence number ${index + 1} with enough text to simulate a long video.</p>`
+).join("");
+const thousandOfficial = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=official-thousand&lang=en&format=srv3&subtype=Translate",
+	translation: rows => rows.map((_, index) => `千行官方字幕翻译${index + 1}`).join("\r"),
+	testName: "official-thousand-row-compaction",
+	body: `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${thousandOfficialParagraphs}</body></timedtext>`,
+	concurrentRequestLimit: 2,
+	responseDelay: 2,
+});
+assert.ok(thousandOfficial.translateRequests.length <= 14, `1001-row official track should use far fewer requests, received ${thousandOfficial.translateRequests.length}`);
+assert.ok(thousandOfficial.translateRequests.length >= 8, "long official track should still be split into bounded batches");
+assert.ok(thousandOfficial.maximumActiveRequests <= 2, `official concurrency must remain fixed at 2, received ${thousandOfficial.maximumActiveRequests}`);
+assert.ok(thousandOfficial.translateRequests.some(request => request.method === "POST"), "large official batches should use POST instead of oversized GET URLs");
+assert.ok(thousandOfficial.translateRequests.filter(request => request.method === "GET").every(request => {
+	const query = new URL(request.url).searchParams.get("q") ?? "";
+	return encodeURIComponent(query).length <= 5000;
+}), "GET requests must stay below the long-request POST threshold");
+assert.equal(
+	(thousandOfficial.output.body.match(/&#x000A;千行官方字幕翻译/gu) ?? []).length,
+	1001,
+	"all rows in a 1001-line official track must still receive translations",
+);
+
+const fallbackOfficialParagraphs = Array.from({ length: 650 }, (_, index) =>
+	`<p t="${index * 2500}" d="1800">Fallback official subtitle sentence number ${index + 1} with enough text for a large request.</p>`
+).join("");
+const fallbackOfficial = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=official-fallback&lang=en&format=srv3&subtype=Translate",
+	translation: rows => rows.map((_, index) => `退让翻译${index + 1}`).join("\r"),
+	testName: "official-large-post-adaptive-fallback",
+	body: `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${fallbackOfficialParagraphs}</body></timedtext>`,
+	concurrentRequestLimit: 2,
+	requestFailure: ({ method, request }) => {
+		if (method !== "POST") return false;
+		const q = new URLSearchParams(request.body ?? "").get("q") ?? "";
+		return encodeURIComponent(q).length > 8000;
+	},
+});
+assert.ok(fallbackOfficial.translateRequests.some(request => request.method === "POST"), "adaptive fallback test must exercise POST");
+assert.ok(fallbackOfficial.maximumActiveRequests <= 2, "adaptive fallback must never raise official concurrency above 2");
+assert.equal(
+	(fallbackOfficial.output.body.match(/&#x000A;退让翻译/gu) ?? []).length,
+	650,
+	"a rejected large POST batch must split locally and still translate every official row",
+);
+
 const oversizedBroadcast = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=broadcast-long-query&lang=ko&name=CC1&format=srv3&subtype=Translate",
 	translation: rows => rows.map(() => "广播译文").join("\r"),
@@ -405,6 +469,8 @@ console.log(JSON.stringify({
 	officialV16BatchingPreserved: "passed",
 	officialOversizedQueriesSplitWithTimingAndOrderPreserved: "passed",
 	officialShortQueriesKeepOriginalBatching: "passed",
+	longOfficialTracksCompactOverPostAtConcurrencyTwo: "passed",
+	longOfficialPostFailureFallsBackLocally: "passed",
 	broadcastOversizedQueriesUnchanged: "passed",
 	hugeOfficialMismatchRecoveredLocally: "passed",
 }, null, 2));
