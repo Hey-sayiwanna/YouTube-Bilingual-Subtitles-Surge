@@ -507,14 +507,24 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 				!(units[end + 1].paragraphWidth <= 16 || units[end + 1].paragraphTokenCount <= 2);
 
 			const strongPunctuationBoundary = /[.!?。！？…]["'’”)]*$/u.test(text);
+			const weakPunctuationBoundary = /[,;:，；：]["'’”)]*$/u.test(text);
 			const grammarBoundary = terminal || strongPunctuationBoundary
 				? null
 				: scoreYouTubeASRGrammarBoundary(units, end + 1, text, width);
-			if (grammarBoundary?.forbid && !terminal) {
+
+			if (!terminal) {
 				const nextText = joinYouTubeCaptionFragments(text, units[end + 1].text).trim();
 				const nextWidth = measureYouTubeCaptionWidth(nextText);
 				const nextDuration = units[end + 1].end - units[start].start;
-				if (nextWidth <= hardWidth && nextDuration <= maximumDuration) continue;
+				const canContinueSafely = nextWidth <= hardWidth && nextDuration <= maximumDuration;
+				const hasBoundaryEvidence =
+					strongPunctuationBoundary ||
+					weakPunctuationBoundary ||
+					gapAfter > maximumGap ||
+					grammarBoundary?.strong ||
+					grammarBoundary?.weak;
+
+				if (canContinueSafely && (grammarBoundary?.forbid || !hasBoundaryEvidence)) continue;
 			}
 
 			const cueCost = scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, {
