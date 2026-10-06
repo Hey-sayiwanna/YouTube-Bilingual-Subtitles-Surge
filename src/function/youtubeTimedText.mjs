@@ -513,6 +513,18 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 				grammarBoundary,
 			});
 			const totalCost = cueCost + costs[end + 1];
+			if (start === 0 && units.some(unit => /yakutia/i.test(unit.text))) {
+				console.log("[ASR-DEBUG]", JSON.stringify({
+					text,
+					next: terminal ? null : units[end + 1].text,
+					width,
+					duration,
+					grammarBoundary,
+					cueCost,
+					tailCost: costs[end + 1],
+					totalCost,
+				}));
+			}
 			if (totalCost < costs[start]) {
 				costs[start] = totalCost;
 				nextIndexes[start] = end + 1;
