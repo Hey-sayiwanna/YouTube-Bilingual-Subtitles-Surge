@@ -39,7 +39,7 @@ jobs:
       - name: Commit generated v32 bundle on branch pushes
         if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
         run: |
-          if ! git diff --quiet -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v32.bundle.js; then
+          if [ -n "$(git status --porcelain -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v32.bundle.js)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v32.bundle.js
