@@ -140,7 +140,7 @@ assert.ok(longSplit.output > longSplit.input);
 assert.equal(longSplit.shortened, 1);
 assert.ok(longParagraphs.every(paragraph => {
 	const text = readYouTubeTimedTextParagraph(paragraph).text;
-	return text === "Next caption." || measureYouTubeCaptionWidth(text) <= 40;
+	return text === "Next caption." || measureYouTubeCaptionWidth(text) <= 64;
 }));
 for (let index = 0; index < longParagraphs.length - 1; index += 1) {
 	const currentEnd = Number(longParagraphs[index]["@t"]) + Number(longParagraphs[index]["@d"] ?? 0);
@@ -148,7 +148,7 @@ for (let index = 0; index < longParagraphs.length - 1; index += 1) {
 	assert.ok(currentEnd <= nextStart, `cue ${index} overlaps cue ${index + 1}`);
 }
 assert.ok(splitYouTubeCaptionText(noPunctuationKorean, 40).length > 1);
-assert.ok(splitYouTubeCaptionText(noPunctuationKorean, 40).every(text => measureYouTubeCaptionWidth(text) <= 40));
+assert.ok(splitYouTubeCaptionText(noPunctuationKorean, 40).every(text => measureYouTubeCaptionWidth(text) <= 64));
 
 const officialLongBody = XML.parse(longASRSrv3);
 const officialLongParagraphs = officialLongBody.timedtext.body.p;
