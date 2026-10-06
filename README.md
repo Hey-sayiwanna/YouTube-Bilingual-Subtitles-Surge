@@ -23,6 +23,15 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ## 更新日志
 
+### 2026-10-07 · v32
+
+- **自动字幕改为估算词级时间流**：当 srv3 只有 `<p t/d>`、内部 `<s>` 没有词级时间时，根据每个 `p` 的持续时间和词宽估算 token 时间，再跨 `p` 重新分段。
+- **第一份实机抓包回归**：允许在原始 `p` 内部的强标点处分界，可把 `This is everything ... at the | North Korean border. First ...` 重建为完整的 `... North Korean border.`，下一句再从 `First...` 开始。
+- **第二份 UFC 抓包回归**：无标点解说不再把 `come at / him`、`he's got / his / leg` 这类极短残片单独送翻译；原始 `p` 边界只作为弱提示，短孤儿段会优先并回上下文。
+- **ASR 识别增强**：除 `kind=asr` 外同时识别 `caps=asr` 与 auto-generated 轨道名，降低 iOS 请求参数差异导致误走官方字幕路径的概率。
+- **构建链修正**：Rspack、运行 bundle、模块入口和独立性测试统一到 v32；补齐两份实机抓包回归测试，并修复 v31 删除空滚动事件后旧测试仍伪造 3 行译文的问题。
+
+
 ### 2026-10-07 · v31
 
 - **自动字幕改为 p 级时间流重建**：针对实机返回的 srv3 中只有 `<p t/d>`、内部 `<s>` 已无 `t` 的情况，不再依赖词级时间。
@@ -100,7 +109,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 | `src/function/youtubeTimedText.mjs` | 自动字幕两行显示与长句处理 |
 | `request.youtube-standalone-v18.bundle.js` | YouTube Player 请求脚本 |
 | `response.youtube-standalone-v18.bundle.js` | YouTube Player / GetWatch 响应脚本 |
-| `Translate.response.youtube-fix-v31.bundle.js` | 当前 v31 字幕响应脚本（保留 v27/v28 与既有 ASR 防重叠修复，并加入 p 级时间流先重组后翻译） |
+| `Translate.response.youtube-fix-v32.bundle.js` | 当前 v32 字幕响应脚本（按 p 时间估算 token 时间流，全局重分段后再翻译） |
 | `tests/` | 自动字幕、官方字幕和模块独立性测试 |
 
 ## 开源说明

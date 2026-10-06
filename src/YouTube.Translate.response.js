@@ -37,7 +37,7 @@ const SETTINGS = Object.freeze({
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 31 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 32 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -45,16 +45,16 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const originalXMLLength = originalXML.length;
 	const body = XML.parse(originalXML);
 	const requestURL = new URL($request.url);
-	const isAutomaticCaption = requestURL.searchParams.get("kind") === "asr";
+	const isAutomaticCaption = detectYouTubeAutomaticCaption(requestURL);
 	const isBroadcastCaption = !isAutomaticCaption && detectYouTubeBroadcastCaption(requestURL, body);
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 31 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 32 skipped: response is not timedtext XML");
 		return;
 	}
 	const chineseSource = detectYouTubeChineseCaption(requestURL, body);
 	if (chineseSource.detected) {
 		$response.headers = $response.headers ?? {};
-		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "31";
+		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "32";
 		$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 		$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = "chinese-pass-through";
 		$response.headers["X-Hey-Sayiwanna-Chinese-Source"] = chineseSource.reason;
@@ -65,7 +65,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	ensureYouTubeTimedTextRows(body, 2);
 	if (isAutomaticCaption) {
 		const paragraphResegment = resegmentYouTubeASRByParagraphTiming(body);
-		Console.info(`YouTube ASR v31 paragraph-stream rebuild: applied=${paragraphResegment.applied}, reason=${paragraphResegment.reason}, input=${paragraphResegment.input}, visible=${paragraphResegment.visible}, output=${paragraphResegment.output}, removedEmpty=${paragraphResegment.removedEmpty}, merged=${paragraphResegment.merged}`);
+		Console.info(`YouTube ASR v32 estimated-token-stream rebuild: applied=${paragraphResegment.applied}, reason=${paragraphResegment.reason}, input=${paragraphResegment.input}, visible=${paragraphResegment.visible}, output=${paragraphResegment.output}, removedEmpty=${paragraphResegment.removedEmpty}, merged=${paragraphResegment.merged}`);
 		const normalizedParagraphs = disableYouTubeASRRollingWindow(body);
 		Console.info(`YouTube ASR fixed two-line mode: ${normalizedParagraphs} paragraphs`);
 		if (!paragraphResegment.applied) {
@@ -117,9 +117,9 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "31";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "32";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
-	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "paragraph-stream-v31-with-v30-v29-fallback" : "unchanged";
+	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = isAutomaticCaption ? "estimated-token-stream-v32-with-v30-v29-fallback" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-Broadcast-Mode"] = isBroadcastCaption ? "fixed-two-lines-no-roll-up" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = isAutomaticCaption ? "automatic" : isBroadcastCaption ? "broadcast" : "official";
 	$response.headers["X-Hey-Sayiwanna-XML-Original-Length"] = String(originalXMLLength);
@@ -196,7 +196,7 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/31",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/32",
 			Referer: "https://translate.google.com",
 		},
 		timeout: 15,
@@ -215,6 +215,17 @@ function normalizeTranslation(text) {
 	if (Array.isArray(text)) return text.flat(Number.POSITIVE_INFINITY).join("");
 	if (text === undefined || text === null) return "";
 	return typeof text === "string" ? text : String(text);
+}
+
+function detectYouTubeAutomaticCaption(requestURL) {
+	const kind = (requestURL.searchParams.get("kind") ?? "").trim().toLowerCase();
+	const caps = (requestURL.searchParams.get("caps") ?? "").trim().toLowerCase();
+	const trackName = (requestURL.searchParams.get("name") ?? "").normalize("NFKC");
+	return (
+		kind === "asr" ||
+		caps === "asr" ||
+		/(?:auto(?:matic)?[- _]?generated|auto[- _]?caption|自动生成|自動生成)/iu.test(trackName)
+	);
 }
 
 function detectYouTubeBroadcastCaption(requestURL, body) {
