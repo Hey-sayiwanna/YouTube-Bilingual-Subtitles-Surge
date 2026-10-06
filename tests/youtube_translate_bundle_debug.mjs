@@ -17,7 +17,7 @@ const ufcParagraphTimedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext
 const northKoreaParagraphTimedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="0" d="1680"><s>This is everything that happened at the</s></p><p t="1680" d="1720"><s>North Korean border. First, I took a</s></p><p t="3400" d="1680"><s>boat and crossed into the North Korean</s></p><p t="5080" d="2200"><s>border. I saw many apartments and</s></p><p t="7280" d="2000"><s>soldiers who waved at us, but no other</s></p><p t="9280" d="2200"><s>people or signs of life, which felt</s></p><p t="11480" d="1760"><s>strange.</s></p></body></timedtext>`;
 const traditionalChineseSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3000">這是繁體中文字幕，不需要再次翻譯。</p></body></timedtext>`;
 
-async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0 }) {
+async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0, requestFailure = null }) {
 	const translateRequestURLs = [];
 	const translateRequests = [];
 	let activeRequests = 0;
@@ -43,6 +43,10 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 			? new URLSearchParams(request.body ?? "").get("q")
 			: new URL(request.url).searchParams.get("q");
 		const sourceRows = String(sourceText ?? "").split(/\r/);
+		if (typeof requestFailure === "function" && requestFailure({ method, request, sourceRows })) {
+			callback(new Error("Synthetic translation request failure"));
+			return;
+		}
 		const translated = typeof translation === "function" ? translation(sourceRows) : translation;
 		const respond = () => {
 			activeRequests -= 1;
@@ -385,6 +389,29 @@ assert.equal(
 	"all rows in a 1001-line official track must still receive translations",
 );
 
+const fallbackOfficialParagraphs = Array.from({ length: 650 }, (_, index) =>
+	`<p t="${index * 2500}" d="1800">Fallback official subtitle sentence number ${index + 1} with enough text for a large request.</p>`
+).join("");
+const fallbackOfficial = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=official-fallback&lang=en&format=srv3&subtype=Translate",
+	translation: rows => rows.map((_, index) => `退让翻译${index + 1}`).join("\r"),
+	testName: "official-large-post-adaptive-fallback",
+	body: `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${fallbackOfficialParagraphs}</body></timedtext>`,
+	concurrentRequestLimit: 2,
+	requestFailure: ({ method, request }) => {
+		if (method !== "POST") return false;
+		const q = new URLSearchParams(request.body ?? "").get("q") ?? "";
+		return encodeURIComponent(q).length > 8000;
+	},
+});
+assert.ok(fallbackOfficial.translateRequests.some(request => request.method === "POST"), "adaptive fallback test must exercise POST");
+assert.ok(fallbackOfficial.maximumActiveRequests <= 2, "adaptive fallback must never raise official concurrency above 2");
+assert.equal(
+	(fallbackOfficial.output.body.match(/&#x000A;退让翻译/gu) ?? []).length,
+	650,
+	"a rejected large POST batch must split locally and still translate every official row",
+);
+
 const oversizedBroadcast = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=broadcast-long-query&lang=ko&name=CC1&format=srv3&subtype=Translate",
 	translation: rows => rows.map(() => "广播译文").join("\r"),
@@ -442,6 +469,7 @@ console.log(JSON.stringify({
 	officialOversizedQueriesSplitWithTimingAndOrderPreserved: "passed",
 	officialShortQueriesKeepOriginalBatching: "passed",
 	longOfficialTracksCompactOverPostAtConcurrencyTwo: "passed",
+	longOfficialPostFailureFallsBackLocally: "passed",
 	broadcastOversizedQueriesUnchanged: "passed",
 	hugeOfficialMismatchRecoveredLocally: "passed",
 }, null, 2));
