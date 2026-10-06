@@ -24,7 +24,16 @@ jobs:
       - name: Test XML transforms
         run: npm run test:xml
       - name: Test runtime bundle
-        run: npm run test:bundle
+        run: |
+          set -o pipefail
+          npm run test:bundle 2>&1 | tee bundle-test.log
+      - name: Expose runtime failure
+        if: failure()
+        run: |
+          echo '## Runtime bundle test output' >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 80 bundle-test.log >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
       - name: Test module independence
         run: npm run test:independence
       - name: Confirm generated bundles are committed
