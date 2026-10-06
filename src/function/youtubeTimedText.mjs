@@ -493,6 +493,19 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 
 			const terminal = end === length - 1;
 			const gapAfter = terminal ? Number.POSITIVE_INFINITY : units[end + 1].start - units[end].end;
+			const boundaryAtParagraphEnd = Boolean(units[end].paragraphEnd);
+			const nextParagraphIsOrphan =
+				boundaryAtParagraphEnd &&
+				!terminal &&
+				units[end + 1].paragraphIndex !== units[end].paragraphIndex &&
+				(units[end + 1].paragraphWidth <= 16 || units[end + 1].paragraphTokenCount <= 2);
+			const boundaryAfterOrphan =
+				boundaryAtParagraphEnd &&
+				!terminal &&
+				(units[end].paragraphWidth <= 16 || units[end].paragraphTokenCount <= 2) &&
+				units[end + 1].paragraphIndex !== units[end].paragraphIndex &&
+				!(units[end + 1].paragraphWidth <= 16 || units[end + 1].paragraphTokenCount <= 2);
+
 			const strongPunctuationBoundary = /[.!?。！？…]["'’”)]*$/u.test(text);
 			const grammarBoundary = terminal || strongPunctuationBoundary
 				? null
@@ -510,21 +523,12 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 				maximumGap,
 				minimumDuration,
 				terminal,
+				boundaryAtParagraphEnd,
+				nextParagraphIsOrphan,
+				boundaryAfterOrphan,
 				grammarBoundary,
 			});
 			const totalCost = cueCost + costs[end + 1];
-			if (start === 0 && units.some(unit => /yakutia/i.test(unit.text))) {
-				console.log("[ASR-DEBUG]", JSON.stringify({
-					text,
-					next: terminal ? null : units[end + 1].text,
-					width,
-					duration,
-					grammarBoundary,
-					cueCost,
-					tailCost: costs[end + 1],
-					totalCost,
-				}));
-			}
 			if (totalCost < costs[start]) {
 				costs[start] = totalCost;
 				nextIndexes[start] = end + 1;
@@ -547,7 +551,7 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 }
 
 function scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, options) {
-	const { softWidth, minimumWidth, maximumGap, minimumDuration, terminal, boundaryAtParagraphEnd, nextParagraphIsOrphan, grammarBoundary } = options;
+	const { softWidth, minimumWidth, maximumGap, minimumDuration, terminal, boundaryAtParagraphEnd, nextParagraphIsOrphan, boundaryAfterOrphan, grammarBoundary } = options;
 	let cost = Math.abs(width - softWidth) * 1.05;
 	const strongPunctuation = /[.!?。！？…]["'’”)]*$/u.test(text);
 	const weakPunctuation = /[,;:，；：]["'’”)]*$/u.test(text);
@@ -565,6 +569,7 @@ function scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, options) {
 	// YouTube's original <p> boundary is a secondary hint: weaker than grammar,
 	// but useful after an orphan fragment has been absorbed into its left context.
 	if (boundaryAtParagraphEnd) cost -= 28;
+	if (boundaryAfterOrphan) cost -= 105;
 
 	// Grammar decides no-punctuation boundaries.
 	if (grammarBoundary?.forbid) cost += 220;
