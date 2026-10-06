@@ -652,10 +652,16 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		return { forbid: true, reason: "right-dependent-phrase" };
 	}
 
-	// A leading "to" is usually a complement or prepositional phrase attached to the left side.
-	// Keep it attached unless the hard display limit later forces a fallback split.
+	// "to ..." may start a natural infinitive phrase after a completed left phrase,
+	// but must stay attached after an auxiliary construction such as "will go | to school".
 	if (rightFirst === "to") {
-		return { forbid: true, reason: "to-dependent-phrase" };
+		if (isYouTubeASRAuxiliary(leftPenultimate) || isYouTubeASRAuxiliary(leftLast)) {
+			return { forbid: true, reason: "to-verb-complement" };
+		}
+		if (currentWidth >= 30 && rightWords.length >= 4) {
+			return { weak: true, reason: "to-infinitive-phrase" };
+		}
+		return { forbid: true, reason: "short-to-phrase" };
 	}
 
 	if (rightFirst === "then" && hasYouTubeASRClauseCore(rightWords.slice(1, 8))) {
