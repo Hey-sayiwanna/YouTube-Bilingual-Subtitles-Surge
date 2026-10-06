@@ -23,6 +23,15 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ## 更新日志
 
+### 2026-10-07 · v30（实验）
+
+- 自动字幕优先读取 YouTube srv3 的 `<s t="...">` 片段级时间偏移，将连续 ASR 片段先还原成时间词流，再综合停顿、标点与显示宽度选择字幕边界。
+- 不使用英语主语、代词或介词词表作为主要判据，避免把下一句主语机械搬到上一句。
+- 只有细粒度时间覆盖充分时才启用 v30 重组；否则自动回退 v29 的保守句界与长度兜底逻辑。
+- 新增日志 `YouTube ASR timed-stream probe`，可直接确认实机字幕是否提供足够的片段时间信息。
+- v30 翻译响应 bundle 继续使用 jsDelivr 加载，以规避部分 iOS / Surge 访问 GitHub Raw 时的 TLS -1200。
+
+
 ### 2026-10-07 · v29
 
 - **CDN 兼容修复**：针对部分 iOS / Surge 更新 v29 时访问 `raw.githubusercontent.com` 出现 `NSURLErrorDomain -1200` TLS 握手失败，仅将 v29 翻译响应 bundle 的加载地址切换为 jsDelivr；字幕算法与 v29 逻辑不变。
@@ -82,7 +91,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 | `src/function/youtubeTimedText.mjs` | 自动字幕两行显示与长句处理 |
 | `request.youtube-standalone-v18.bundle.js` | YouTube Player 请求脚本 |
 | `response.youtube-standalone-v18.bundle.js` | YouTube Player / GetWatch 响应脚本 |
-| `Translate.response.youtube-fix-v29.bundle.js` | 当前 v29 字幕响应脚本（包含 v27 翻译稳定性、v28 官方长句拆分与 v29 ASR 语义边界优化） |
+| `Translate.response.youtube-fix-v30.bundle.js` | 当前 v29 字幕响应脚本（包含 v27 翻译稳定性、v28 官方长句拆分与 v29 ASR 语义边界优化） |
 | `tests/` | 自动字幕、官方字幕和模块独立性测试 |
 
 ## 开源说明
