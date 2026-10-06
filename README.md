@@ -23,6 +23,15 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ## 更新日志
 
+### 2026-10-07 · v31
+
+- **自动字幕改为 p 级时间流重建**：针对实机返回的 srv3 中只有 `<p t/d>`、内部 `<s>` 已无 `t` 的情况，不再依赖词级时间。
+- **先重组、后翻译**：过滤空的滚动/显示控制 `<p>`，将时间连续的 ASR 碎片先组合成较完整英文 cue，再送 Google 翻译，重点改善 `come at | him`、`he's got | his` 这类被分开翻译的问题。
+- **边界保险保持**：优先标点和明显时间间隔，常规目标宽度约 52，64 仍作为硬安全上限，避免为了语义合并重新制造超长字幕。
+- **旧修复全部保留**：ASR 两行/滚动窗口防重叠、时长截断继续执行；v31 无法重建时依次回退 v30 词级时间路线和 v29 保守句界路线。
+- v27 官方字幕翻译稳定性、v28 官方长字幕拆分逻辑不变；v31 运行 bundle 继续通过 jsDelivr 加载。
+
+
 ### 2026-10-07 · v30（实验）
 
 - 自动字幕优先读取 YouTube srv3 的 `<s t="...">` 片段级时间偏移，将连续 ASR 片段先还原成时间词流，再综合停顿、标点与显示宽度选择字幕边界。
@@ -91,7 +100,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 | `src/function/youtubeTimedText.mjs` | 自动字幕两行显示与长句处理 |
 | `request.youtube-standalone-v18.bundle.js` | YouTube Player 请求脚本 |
 | `response.youtube-standalone-v18.bundle.js` | YouTube Player / GetWatch 响应脚本 |
-| `Translate.response.youtube-fix-v30.bundle.js` | 当前 v29 字幕响应脚本（包含 v27 翻译稳定性、v28 官方长句拆分与 v29 ASR 语义边界优化） |
+| `Translate.response.youtube-fix-v31.bundle.js` | 当前 v31 字幕响应脚本（保留 v27/v28 与既有 ASR 防重叠修复，并加入 p 级时间流先重组后翻译） |
 | `tests/` | 自动字幕、官方字幕和模块独立性测试 |
 
 ## 开源说明
