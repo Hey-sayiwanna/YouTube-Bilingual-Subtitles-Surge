@@ -456,6 +456,24 @@ function tokenizeYouTubeASRParagraph(text, hardWidth) {
 }
 
 function partitionYouTubeASREstimatedTokens(units, options) {
+	if (!units.length) return [];
+
+	// Real punctuation is the most reliable sentence boundary. Never merge across it.
+	const regions = [];
+	let region = [];
+	for (const unit of units) {
+		region.push(unit);
+		if (/[.!?。！？…]["'’”)]*$/u.test(normalizeText(unit.text).trim())) {
+			regions.push(region);
+			region = [];
+		}
+	}
+	if (region.length) regions.push(region);
+
+	return regions.flatMap(items => partitionYouTubeASRGrammarRegion(items, options));
+}
+
+function partitionYouTubeASRGrammarRegion(units, options) {
 	const { softWidth, hardWidth, minimumWidth, maximumGap, maximumDuration, minimumDuration } = options;
 	const length = units.length;
 	if (!length) return [];
@@ -475,12 +493,40 @@ function partitionYouTubeASREstimatedTokens(units, options) {
 
 			const terminal = end === length - 1;
 			const gapAfter = terminal ? Number.POSITIVE_INFINITY : units[end + 1].start - units[end].end;
-			const boundaryAtParagraphEnd = units[end].paragraphEnd;
+			const boundaryAtParagraphEnd = Boolean(units[end].paragraphEnd);
 			const nextParagraphIsOrphan =
 				boundaryAtParagraphEnd &&
 				!terminal &&
 				units[end + 1].paragraphIndex !== units[end].paragraphIndex &&
 				(units[end + 1].paragraphWidth <= 16 || units[end + 1].paragraphTokenCount <= 2);
+			const boundaryAfterOrphan =
+				boundaryAtParagraphEnd &&
+				!terminal &&
+				(units[end].paragraphWidth <= 16 || units[end].paragraphTokenCount <= 2) &&
+				units[end + 1].paragraphIndex !== units[end].paragraphIndex &&
+				!(units[end + 1].paragraphWidth <= 16 || units[end + 1].paragraphTokenCount <= 2);
+
+			const strongPunctuationBoundary = /[.!?。！？…]["'’”)]*$/u.test(text);
+			const weakPunctuationBoundary = /[,;:，；：]["'’”)]*$/u.test(text);
+			const grammarBoundary = terminal || strongPunctuationBoundary
+				? null
+				: scoreYouTubeASRGrammarBoundary(units, end + 1, text, width);
+
+			if (!terminal) {
+				const nextText = joinYouTubeCaptionFragments(text, units[end + 1].text).trim();
+				const nextWidth = measureYouTubeCaptionWidth(nextText);
+				const nextDuration = units[end + 1].end - units[start].start;
+				const canContinueSafely = nextWidth <= hardWidth && nextDuration <= maximumDuration;
+				const hasBoundaryEvidence =
+					strongPunctuationBoundary ||
+					weakPunctuationBoundary ||
+					gapAfter > maximumGap ||
+					grammarBoundary?.strong ||
+					grammarBoundary?.weak;
+
+				if (canContinueSafely && (grammarBoundary?.forbid || !hasBoundaryEvidence)) continue;
+			}
+
 			const cueCost = scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, {
 				softWidth,
 				minimumWidth,
@@ -489,8 +535,26 @@ function partitionYouTubeASREstimatedTokens(units, options) {
 				terminal,
 				boundaryAtParagraphEnd,
 				nextParagraphIsOrphan,
+				boundaryAfterOrphan,
+				grammarBoundary,
 			});
 			const totalCost = cueCost + costs[end + 1];
+			if (
+				start === 0 &&
+				units.some(unit => /family/i.test(unit.text)) &&
+				(/stove$/i.test(text) || /family$/i.test(text))
+			) {
+				console.log("[GRAMMAR-COST]", JSON.stringify({
+					text,
+					next: terminal ? null : units[end + 1]?.text,
+					width,
+					duration,
+					grammarBoundary,
+					cueCost,
+					tailCost: costs[end + 1],
+					totalCost,
+				}));
+			}
 			if (totalCost < costs[start]) {
 				costs[start] = totalCost;
 				nextIndexes[start] = end + 1;
@@ -513,25 +577,236 @@ function partitionYouTubeASREstimatedTokens(units, options) {
 }
 
 function scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, options) {
-	const { softWidth, minimumWidth, maximumGap, minimumDuration, terminal, boundaryAtParagraphEnd, nextParagraphIsOrphan } = options;
-	let cost = Math.abs(width - softWidth) * 1.25;
+	const { softWidth, minimumWidth, maximumGap, minimumDuration, terminal, boundaryAtParagraphEnd, nextParagraphIsOrphan, boundaryAfterOrphan, grammarBoundary } = options;
+	let cost = Math.abs(width - softWidth) * 1.05;
 	const strongPunctuation = /[.!?。！？…]["'’”)]*$/u.test(text);
 	const weakPunctuation = /[,;:，；：]["'’”)]*$/u.test(text);
 
 	if (width < minimumWidth) {
 		const deficit = minimumWidth - width;
-		cost += deficit * (terminal ? 3 : 6) + (terminal ? 15 : 45);
+		cost += deficit * (terminal ? 2.5 : 5) + (terminal ? 12 : 36);
 	}
 	if (duration < minimumDuration) cost += (minimumDuration - duration) / 30;
 	if (duration > 5200) cost += (duration - 5200) / 90;
-	if (strongPunctuation) cost -= 95;
-	else if (weakPunctuation) cost -= 18;
+	if (strongPunctuation) cost -= 180;
+	else if (weakPunctuation) cost -= 24;
 	if (gapAfter > maximumGap) cost -= 60;
-	if (boundaryAtParagraphEnd) cost -= 25;
-	if (nextParagraphIsOrphan && !strongPunctuation) cost += 85;
-	if (endsYouTubeASRContinuationWord(text)) cost += 70;
-	if (terminal) cost -= 4;
+
+	// YouTube's original <p> boundary is a secondary hint: weaker than grammar,
+	// but useful after an orphan fragment has been absorbed into its left context.
+	if (boundaryAtParagraphEnd) cost -= 28;
+	if (boundaryAfterOrphan) cost -= 105;
+
+	// Grammar decides no-punctuation boundaries.
+	if (grammarBoundary?.forbid) cost += 220;
+	else if (grammarBoundary?.strong) cost -= 130;
+	else if (grammarBoundary?.weak) cost -= 58;
+
+	if (nextParagraphIsOrphan && !strongPunctuation) cost += 100;
+	if (endsYouTubeASRContinuationWord(text)) cost += 110;
+	if (terminal) cost -= 6;
 	return cost;
+}
+
+function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWidth) {
+	if (!Number.isFinite(nextIndex) || nextIndex < 0 || nextIndex >= units.length) return null;
+
+	const leftWords = extractYouTubeASRWords(currentText);
+	if (!leftWords.length) return null;
+
+	const rightWords = units
+		.slice(nextIndex, Math.min(units.length, nextIndex + 10))
+		.flatMap(unit => extractYouTubeASRWords(unit.text));
+	if (!rightWords.length) return null;
+
+	const leftLast = leftWords.at(-1);
+	const leftPenultimate = leftWords.at(-2) ?? "";
+	const rightFirst = rightWords[0];
+	const rightSecond = rightWords[1] ?? "";
+
+	// The left side is visibly unfinished.
+	if (isYouTubeASRHardContinuation(leftLast, leftPenultimate)) {
+		return { forbid: true, reason: "left-incomplete" };
+	}
+
+	// A determiner + noun phrase at the left edge often still needs a complement
+	// (for example "keep his family | warm"). Only allow the cut when the right
+	// side clearly starts a fresh clause.
+	if (
+		(isYouTubeASRPossessiveDeterminer(leftPenultimate) ||
+			isYouTubeASRArticle(leftPenultimate) ||
+			isYouTubeASRDemonstrative(leftPenultimate)) &&
+		!hasYouTubeASRClauseCore(rightWords.slice(0, 8)) &&
+		!isYouTubeASRSubordinator(rightFirst)
+	) {
+		return { forbid: true, reason: "left-open-nominal-phrase" };
+	}
+
+	// Possessive/article/demonstrative may start a new sentence only when a finite predicate follows.
+	if (
+		isYouTubeASRPossessiveDeterminer(rightFirst) ||
+		isYouTubeASRArticle(rightFirst) ||
+		isYouTubeASRDemonstrative(rightFirst)
+	) {
+		return hasYouTubeASRFinitePredicate(rightWords, 1, 6)
+			? { weak: true, reason: "nominal-subject-clause" }
+			: { forbid: true, reason: "dependent-noun-phrase" };
+	}
+
+	// An auxiliary without its subject cannot start an independent cue.
+	if (isYouTubeASRAuxiliary(rightFirst)) {
+		return { forbid: true, reason: "orphan-auxiliary" };
+	}
+
+	// Subordinate clauses are good boundaries only when they actually contain a clause.
+	if (isYouTubeASRSubordinator(rightFirst) && hasYouTubeASRClauseCore(rightWords.slice(1, 8))) {
+		return { strong: true, reason: "subordinate-clause" };
+	}
+
+	// A right-side dependent phrase should stay attached to the left clause.
+	if (new Set(["than", "as", "of", "for", "with", "from", "at", "on", "in", "by", "into", "over", "under", "between", "through"]).has(rightFirst)) {
+		return { forbid: true, reason: "right-dependent-phrase" };
+	}
+
+	// "to ..." may start a natural infinitive phrase after a completed left phrase,
+	// but must stay attached after an auxiliary construction such as "will go | to school".
+	if (rightFirst === "to") {
+		if (isYouTubeASRAuxiliary(leftPenultimate) || isYouTubeASRAuxiliary(leftLast)) {
+			return { forbid: true, reason: "to-verb-complement" };
+		}
+		if (currentWidth >= 30 && rightWords.length >= 4) {
+			return { weak: true, reason: "to-infinitive-phrase" };
+		}
+		return { forbid: true, reason: "short-to-phrase" };
+	}
+
+	if (rightFirst === "then" && hasYouTubeASRClauseCore(rightWords.slice(1, 8))) {
+		return { strong: true, reason: "then-clause" };
+	}
+
+	if (rightFirst === "and" && hasYouTubeASRClauseCore(rightWords.slice(1, 8)) && currentWidth >= 30) {
+		return { weak: true, reason: "coordinated-clause" };
+	}
+
+	// A complete subject-predicate sequence can start a fresh cue even if it begins with his/its/the.
+	if (hasYouTubeASRClauseCore(rightWords.slice(0, 8)) && currentWidth >= 34) {
+		return { weak: true, reason: "independent-clause" };
+	}
+
+	return null;
+}
+
+function isYouTubeASRAuxiliary(word) {
+	if (!word) return false;
+	if (/^(?:i|you|he|she|it|we|they)['’](?:m|re|ve|d|ll|s)$/u.test(word)) return true;
+	return new Set([
+		"am", "is", "are", "was", "were", "be", "been",
+		"have", "has", "had",
+		"do", "does", "did",
+		"can", "could", "will", "would", "shall", "should", "may", "might", "must",
+	]).has(word);
+}
+
+function extractYouTubeASRWords(text) {
+	return normalizeText(text)
+		.toLowerCase()
+		.match(/[a-z]+(?:['’][a-z]+)?/gu) ?? [];
+}
+
+function isYouTubeASRHardContinuation(last, previous) {
+	if (!last) return false;
+	if (isYouTubeASRFunctionWord(last)) return true;
+	if (isYouTubeASRFiniteVerbMarker(last)) return true;
+	if (last === "to") return true;
+	return false;
+}
+
+function isYouTubeASRFunctionWord(word) {
+	return new Set([
+		"a", "an", "the",
+		"my", "your", "his", "her", "its", "our", "their",
+		"this", "that", "these", "those",
+		"of", "for", "with", "from", "at", "on", "in", "by", "into", "over", "under", "between", "through", "about", "around", "without",
+		"and", "or", "but", "so", "because", "if", "when", "while", "although", "though", "unless", "since", "whereas",
+		"who", "which", "whose", "whom", "than", "as",
+	]).has(word);
+}
+
+function isYouTubeASRPossessiveDeterminer(word) {
+	return new Set(["my", "your", "his", "her", "its", "our", "their"]).has(word);
+}
+
+function isYouTubeASRArticle(word) {
+	return word === "a" || word === "an" || word === "the";
+}
+
+function isYouTubeASRDemonstrative(word) {
+	return new Set(["this", "that", "these", "those"]).has(word);
+}
+
+function isYouTubeASRSubordinator(word) {
+	return new Set([
+		"when", "because", "if", "while", "although", "though",
+		"unless", "once", "since", "whereas", "before", "after",
+	]).has(word);
+}
+
+function hasYouTubeASRClauseCore(words) {
+	if (!words.length) return false;
+	const first = words[0];
+	if (/^(?:i|you|he|she|it|we|they)['’](?:m|re|ve|d|ll|s)$/u.test(first)) return true;
+
+	if (isYouTubeASRPersonalSubject(first)) {
+		return hasYouTubeASRFinitePredicate(words, 1, 4) || looksLikeYouTubeASRBarePredicate(words, 1);
+	}
+
+	if (isYouTubeASRPossessiveDeterminer(first) || isYouTubeASRArticle(first) || isYouTubeASRDemonstrative(first)) {
+		if (hasYouTubeASRFinitePredicate(words, 1, 5)) return true;
+		// determiner + noun + bare predicate, e.g. "the children go to school".
+		return looksLikeYouTubeASRBarePredicate(words, 2);
+	}
+
+	return hasYouTubeASRFinitePredicate(words, 1, 4) || looksLikeYouTubeASRBarePredicate(words, 1);
+}
+
+function looksLikeYouTubeASRBarePredicate(words, predicateIndex) {
+	const predicate = words[predicateIndex];
+	const next = words[predicateIndex + 1];
+	if (!predicate || !next) return false;
+	if (isYouTubeASRFunctionWord(predicate) || isYouTubeASRAuxiliary(predicate)) return false;
+
+	// Infer a predicate from its syntactic continuation rather than a growing verb dictionary.
+	// Examples: "khabib got a hold", "children go to school", "people love eating".
+	if (isYouTubeASRArticle(next) || isYouTubeASRPossessiveDeterminer(next) || isYouTubeASRDemonstrative(next)) return true;
+	if (next === "to" || next === "that") return true;
+	if (/^(?:i|you|he|she|it|we|they)['’](?:m|re|ve|d|ll|s)$/u.test(next)) return true;
+	if (/^[a-z]+ing$/u.test(next)) return true;
+	return false;
+}
+
+function isYouTubeASRPersonalSubject(word) {
+	return new Set(["i", "you", "he", "she", "it", "we", "they"]).has(word);
+}
+
+function hasYouTubeASRFinitePredicate(words, start = 0, limit = 5) {
+	const slice = words.slice(start, Math.min(words.length, limit + 1));
+	for (let index = 0; index < slice.length; index += 1) {
+		const word = slice[index];
+		if (isYouTubeASRFiniteVerbMarker(word)) return true;
+		if (index >= 1 && /^[a-z]+(?:s|ed)$/u.test(word) && !isYouTubeASRFunctionWord(word)) return true;
+	}
+	return false;
+}
+
+function isYouTubeASRFiniteVerbMarker(word) {
+	if (!word) return false;
+	if (/^(?:i|you|he|she|it|we|they)['’](?:m|re|ve|d|ll|s)$/u.test(word)) return true;
+	return new Set([
+		"am", "is", "are", "was", "were", "be", "been",
+		"have", "has", "had",
+		"do", "does", "did",
+		"can", "could", "will", "would", "shall", "should", "may", "might", "must",
+	]).has(word);
 }
 
 function endsYouTubeASRContinuationWord(text) {

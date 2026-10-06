@@ -23,7 +23,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ### 2026-10-07
 
-- **v32**：针对 YouTube 自动字幕只有 `<p t/d>` 时间而缺少词级时间的情况，按时间与词宽估算连续字幕流后重新分段，再进行翻译，重点修复跨 `p` 断句、`come at / him` 等孤立碎片翻译和无标点体育解说问题，同时兼容 `kind=asr`、`caps=asr` 与自动生成字幕轨道识别。
+- **v32**：自动字幕先按真实标点确定硬句界，无标点时再结合时间、孤儿片段和语法完整度重分段，重点修复跨 `p` 断句、`come at / him`、`his family | warm` 等不自然切分，并兼容 `kind=asr`、`caps=asr` 与自动生成字幕轨道识别。
 - **v31**：尝试基于 `p` 级时间流先重组自动字幕再翻译，改善短碎片被单独翻译的问题。
 - **v30（实验）**：尝试利用 `<s t="...">` 细粒度时间恢复自动字幕词流，并在时间信息不足时回退旧逻辑。
 - **v29（实验）**：调整自动字幕句界与长度策略，并将翻译响应脚本切换到 jsDelivr 以改善部分 iOS / Surge 的 Raw GitHub TLS 问题。
