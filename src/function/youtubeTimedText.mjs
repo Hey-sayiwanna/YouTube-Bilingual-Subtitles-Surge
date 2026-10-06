@@ -565,10 +565,6 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		return { forbid: true, reason: "dependent-noun-phrase" };
 	}
 
-	if (rightFirst === "to" && rightSecond && !isYouTubeASRFunctionWord(rightSecond) && currentWidth >= 26) {
-		return { weak: true, reason: "infinitive-clause" };
-	}
-
 	if (isYouTubeASRSubordinator(rightFirst) && hasYouTubeASRClauseCore(rightWords.slice(1, 7))) {
 		return { strong: true, reason: "subordinate-clause" };
 	}
