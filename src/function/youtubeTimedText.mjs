@@ -178,6 +178,66 @@ function disableYouTubeRollingWindow(body) {
  * as one. This is closer to the space used by YouTube's landscape caption
  * renderer than a raw JavaScript string length.
  */
+export function splitYouTubeOfficialLongParagraphs(body, minimumWidth = 70) {
+	const timedTextBody = body?.timedtext?.body;
+	if (!timedTextBody) return { input: 0, output: 0, split: 0 };
+
+	let paragraphs = timedTextBody.p;
+	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
+	const output = [];
+	let split = 0;
+
+	for (const paragraph of paragraphs) {
+		const parsed = readYouTubeTimedTextParagraph(paragraph);
+		const start = parsePositiveInteger(paragraph?.["@t"], true);
+		const duration = parsePositiveInteger(paragraph?.["@d"]);
+		const parts = splitOfficialCaptionAtStrongSentenceBoundary(parsed.text, minimumWidth);
+		if (parts.length <= 1 || !Number.isFinite(start) || !Number.isFinite(duration) || duration <= 0) {
+			output.push(paragraph);
+			continue;
+		}
+
+		split += 1;
+		const weights = parts.map(part => Math.max(1, measureYouTubeCaptionWidth(part)));
+		const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+		let consumedWeight = 0;
+		parts.forEach((part, index) => {
+			const relativeStart = Math.round(duration * consumedWeight / totalWeight);
+			consumedWeight += weights[index];
+			const relativeEnd = index === parts.length - 1 ? duration : Math.round(duration * consumedWeight / totalWeight);
+			const cue = { ...paragraph, "@t": String(start + relativeStart), "@d": String(Math.max(1, relativeEnd - relativeStart)) };
+			setYouTubeTimedTextParagraphText(cue, part, parsed.segmented);
+			output.push(cue);
+		});
+	}
+
+	timedTextBody.p = output;
+	return { input: paragraphs.length, output: output.length, split };
+}
+
+function splitOfficialCaptionAtStrongSentenceBoundary(text, minimumWidth) {
+	text = normalizeText(text).trim();
+	if (!text || text === ZERO_WIDTH_SPACE || measureYouTubeCaptionWidth(text) <= minimumWidth) return text ? [text] : [];
+
+	const candidates = [];
+	const pattern = /[.!?。！？…]+[\s"'’”)]*/gu;
+	for (const match of text.matchAll(pattern)) {
+		const end = (match.index ?? 0) + match[0].length;
+		if (end <= 0 || end >= text.length) continue;
+		const left = text.slice(0, end).trim();
+		const right = text.slice(end).trim();
+		if (!left || !right) continue;
+		const leftWidth = measureYouTubeCaptionWidth(left);
+		const rightWidth = measureYouTubeCaptionWidth(right);
+		if (leftWidth < 18 || rightWidth < 18) continue;
+		candidates.push({ end, balance: Math.abs(leftWidth - rightWidth) });
+	}
+	if (!candidates.length) return [text];
+	candidates.sort((a, b) => a.balance - b.balance);
+	const end = candidates[0].end;
+	return [text.slice(0, end).trim(), text.slice(end).trim()];
+}
+
 export function splitYouTubeASRLongParagraphs(body, maximumWidth = 40) {
 	const timedTextBody = body?.timedtext?.body;
 	if (!timedTextBody) return { input: 0, output: 0, split: 0, shortened: 0 };
