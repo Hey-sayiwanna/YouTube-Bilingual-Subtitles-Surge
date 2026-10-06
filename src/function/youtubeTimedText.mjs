@@ -656,7 +656,6 @@ function isYouTubeASRHardContinuation(last, previous) {
 	if (isYouTubeASRFunctionWord(last)) return true;
 	if (isYouTubeASRFiniteVerbMarker(last)) return true;
 	if (last === "to") return true;
-	if (previous === "to" && !isYouTubeASRFunctionWord(last)) return true;
 	return false;
 }
 
