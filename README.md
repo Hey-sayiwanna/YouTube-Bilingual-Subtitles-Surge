@@ -23,6 +23,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ### 2026-10-07
 
+- **v34**：官方字幕翻译并发由2提升到4，并在单批网络重试仍失败时只二分该批继续恢复，ASR与直播字幕并发保持6。
 - **v33**：有可靠标点时优先按标点断句，无标点时按语法完整度、时间停顿与显示上限重建自然小句，原始 `<p>` 仅保留时间作用，不再参与断句判断。
 - **v32**：自动字幕先按真实标点确定硬句界，无标点时再结合时间、孤儿片段和语法完整度重分段，重点修复跨 `p` 断句、`come at / him`、`his family | warm` 等不自然切分，并兼容 `kind=asr`、`caps=asr` 与自动生成字幕轨道识别。
 - **v31**：尝试基于 `p` 级时间流先重组自动字幕再翻译，改善短碎片被单独翻译的问题。
@@ -78,10 +79,11 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 | `response.youtube-standalone-v18.bundle.js` | 当前仍在使用的 YouTube Player / GetWatch 响应脚本，文件名虽为 v18 但不能删除 |
 | `Translate.response.youtube-fix-v24.bundle.js` ～ `v28.bundle.js` | 保留给仍在使用旧模块的用户做兼容 |
 | `Translate.response.youtube-fix-v32.bundle.js` | 保留给仍在使用 v32 的用户兼容/回退 |
-| `Translate.response.youtube-fix-v33.bundle.js` | 当前 v33 字幕响应脚本 |
+| `Translate.response.youtube-fix-v33.bundle.js` | 保留给仍在使用 v33 的用户兼容/回退 |
+| `Translate.response.youtube-fix-v34.bundle.js` | 当前 v34 字幕响应脚本 |
 | `tests/` | 自动字幕、官方字幕、广播字幕和模块独立性测试 |
 
-> 仓库清理原则：当前运行链依赖的文件一律保留；v24–v28 与 v32 兼容 bundle 保留；v18–v23 与 v29–v31 的旧翻译 bundle 已从主线移除，但历史代码仍可在 Git 提交记录中查看。
+> 仓库清理原则：当前运行链依赖的文件一律保留；v24–v28、v32 与 v33 兼容 bundle 保留；v18–v23 与 v29–v31 的旧翻译 bundle 已从主线移除，但历史代码仍可在 Git 提交记录中查看。
 
 ## 开源说明
 
