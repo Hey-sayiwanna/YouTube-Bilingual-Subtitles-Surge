@@ -58,6 +58,9 @@ const english = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><b
 const mismatchXml = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0"><s>一</s></p><p t="1"><s>二</s></p><p t="2"><s>三</s></p></body></timedtext>`;
 const capturedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="0"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="22160" d="5960" w="1"><s>Make</s><s t="720"> way,</s><s t="1640"> the</s><s t="1880"> beast</s><s t="2720"> has</s><s t="3080"> returned.</s></p></body></timedtext>`;
 const paragraphTimedASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="1680"><s>This is everything that happened at the</s></p><p t="1680" d="1720"><s>North Korean border. First, I took a</s></p><p t="3400" d="1680"><s>boat and crossed into the North Korean</s></p><p t="5080" d="2200"><s>border.</s></p></body></timedtext>`;
+const possessiveAttachmentASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3600"><s>to heat the house with a wood burning stove to keep</s></p><p t="3600" d="3200"><s>his family warm on the ice cold morning in yakutia</s></p></body></timedtext>`;
+const subordinateClauseASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="6200"><s>the children in yakutia will go to school when it's warmer than minus 54 degrees</s></p></body></timedtext>`;
+const independentPossessiveSubjectASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3200"><s>the room was already quiet and cold</s></p><p t="3200" d="3200"><s>his hands were shaking badly</s></p></body></timedtext>`;
 const crossParagraphTimedASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="27000" d="2000" w="1"><s>instead</s><s t="250"> of</s><s t="500"> waiting</s><s t="850"> for</s><s t="1100"> khabib</s><s t="1450"> to</s><s t="1650"> come</s><s t="1800"> at</s></p><p t="29000" d="4000" w="1"><s> him</s><s t="900"> Khabib</s><s t="1250"> got</s><s t="1500"> a</s><s t="1650"> hold</s><s t="1900"> of</s><s t="2100"> his</s><s t="2400"> ankles.</s></p></body></timedtext>`;
 const rollingSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><ws id="0"/><ws id="1" mh="2" ju="0" sd="3"/><wp id="0"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><w t="0" id="1" wp="1" ws="1"/><p t="40" d="4200" w="1"><s>첫 번째 문장</s></p><p t="4230" w="1" a="1"></p><p t="4240" d="4200" w="1"><s>두 번째 문장</s></p></body></timedtext>`;
 const longASRSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="0"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="1000" d="9000" w="1"><s>This is a very long automatic caption, and it should be divided at a natural boundary before it overlaps.</s></p><p t="8500" d="2000" w="1"><s>Next caption.</s></p></body></timedtext>`;
@@ -117,6 +120,23 @@ assert.equal(paragraphTimedResult.reason, "estimated-token-timing");
 const paragraphTimedParagraphs = paragraphTimedBody.timedtext.body.p;
 assert.equal(readYouTubeTimedTextParagraph(paragraphTimedParagraphs[0]).text, "This is everything that happened at the North Korean border.");
 assert.equal(readYouTubeTimedTextParagraph(paragraphTimedParagraphs[1]).text, "First, I took a boat and crossed into the North Korean border.");
+
+const possessiveAttachmentBody = XML.parse(possessiveAttachmentASR);
+resegmentYouTubeASRByParagraphTiming(possessiveAttachmentBody);
+const possessiveAttachmentParagraphs = possessiveAttachmentBody.timedtext.body.p;
+const possessiveAttachmentTexts = possessiveAttachmentParagraphs.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
+assert.ok(possessiveAttachmentTexts.some(text => /to keep his family warm/u.test(text)), "dependent possessive noun phrase must stay attached to its governing verb");
+assert.ok(possessiveAttachmentTexts.every(text => !/^his family warm\b/u.test(text)), "must not split before dependent 'his family'");
+
+const subordinateClauseBody = XML.parse(subordinateClauseASR);
+resegmentYouTubeASRByParagraphTiming(subordinateClauseBody);
+const subordinateClauseTexts = subordinateClauseBody.timedtext.body.p.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
+assert.ok(subordinateClauseTexts.some(text => /^when it's warmer than minus 54 degrees$/u.test(text)), "natural subordinate clause should be allowed to start a new cue");
+
+const independentPossessiveBody = XML.parse(independentPossessiveSubjectASR);
+resegmentYouTubeASRByParagraphTiming(independentPossessiveBody);
+const independentPossessiveTexts = independentPossessiveBody.timedtext.body.p.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
+assert.ok(independentPossessiveTexts.some(text => /^his hands were shaking badly$/u.test(text)), "possessive determiner may start a cue when it forms a complete subject-predicate clause");
 
 const timedStreamBody = XML.parse(crossParagraphTimedASR);
 const timedStreamResult = resegmentYouTubeASRBySegmentTiming(timedStreamBody);
@@ -190,6 +210,7 @@ console.log(JSON.stringify({
 	capturedSrv3: "passed",
 	autoGeneratedTwoLines: "passed",
 	autoGeneratedEstimatedTokenResegmentation: "passed",
+	autoGeneratedGrammarCompleteness: "passed",
 	autoGeneratedTimedStreamResegmentation: "passed",
 	autoGeneratedLongCueSplit: "passed",
 	autoGeneratedNoPunctuationSplit: "passed",
