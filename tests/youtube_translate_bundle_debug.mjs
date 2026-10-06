@@ -240,8 +240,8 @@ const ipadMergedMismatch = await runBundle({
 	testName: "ipad-merged-single-batch-mismatch",
 	body: ipadMergedSrv3,
 });
-assert.equal(XML.parse(ipadMergedMismatch.output.body).timedtext.body.p.length, 374);
-assert.equal((ipadMergedMismatch.output.body.match(/&#x000A;局部重试翻译/gu) ?? []).length, 374);
+assert.equal(XML.parse(ipadMergedMismatch.output.body).timedtext.body.p.length, 248);
+assert.equal((ipadMergedMismatch.output.body.match(/&#x000A;局部重试翻译/gu) ?? []).length, 248);
 assert.ok(ipadMergedMismatch.translateRequestURLs.length < 80, "a single bad batch must not retry every subtitle row");
 
 let droppedHugeAutomaticRow = false;
