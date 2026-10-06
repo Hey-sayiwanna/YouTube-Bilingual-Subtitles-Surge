@@ -37,4 +37,4 @@ jobs:
       - name: Test module independence
         run: npm run test:independence
       - name: Confirm generated bundles are committed
-        run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v33.bundle.js
+        run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v33.1.bundle.js
