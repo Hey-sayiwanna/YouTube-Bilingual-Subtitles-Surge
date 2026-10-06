@@ -131,7 +131,10 @@ assert.ok(possessiveAttachmentTexts.every(text => !/^his family warm\b/u.test(te
 const subordinateClauseBody = XML.parse(subordinateClauseASR);
 resegmentYouTubeASRByParagraphTiming(subordinateClauseBody);
 const subordinateClauseTexts = subordinateClauseBody.timedtext.body.p.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
-assert.ok(subordinateClauseTexts.some(text => /^when it's warmer than minus 54 degrees$/u.test(text)), "natural subordinate clause should be allowed to start a new cue");
+assert.ok(
+	subordinateClauseTexts.some(text => /^when it's warmer than minus 54 degrees$/u.test(text)),
+	`natural subordinate clause should be allowed to start a new cue: ${JSON.stringify(subordinateClauseTexts)}`
+);
 
 const independentPossessiveBody = XML.parse(independentPossessiveSubjectASR);
 resegmentYouTubeASRByParagraphTiming(independentPossessiveBody);
