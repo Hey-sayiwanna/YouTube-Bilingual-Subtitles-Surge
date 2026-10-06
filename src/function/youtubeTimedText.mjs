@@ -613,6 +613,19 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		return { forbid: true, reason: "left-incomplete" };
 	}
 
+	// A determiner + noun phrase at the left edge often still needs a complement
+	// (for example "keep his family | warm"). Only allow the cut when the right
+	// side clearly starts a fresh clause.
+	if (
+		(isYouTubeASRPossessiveDeterminer(leftPenultimate) ||
+			isYouTubeASRArticle(leftPenultimate) ||
+			isYouTubeASRDemonstrative(leftPenultimate)) &&
+		!hasYouTubeASRClauseCore(rightWords.slice(0, 8)) &&
+		!isYouTubeASRSubordinator(rightFirst)
+	) {
+		return { forbid: true, reason: "left-open-nominal-phrase" };
+	}
+
 	// Possessive/article/demonstrative may start a new sentence only when a finite predicate follows.
 	if (
 		isYouTubeASRPossessiveDeterminer(rightFirst) ||
