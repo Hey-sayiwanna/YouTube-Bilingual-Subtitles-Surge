@@ -250,6 +250,142 @@ function splitOfficialCaptionAtStrongSentenceBoundary(text, minimumWidth) {
  * If segment timing is missing or sparse, leave the body untouched so the
  * conservative v29 paragraph path can be used as a fallback.
  */
+/**
+ * v31: rebuild ASR from paragraph timing when YouTube has already flattened
+ * the original <s t="..."> word offsets. Empty <p> nodes are display/roll-up
+ * control events and are excluded from the translation stream.
+ *
+ * This runs BEFORE translation so fragments such as "come at" + "him" are
+ * translated together instead of trying to repair an already mistranslated
+ * Chinese row afterwards. Existing rolling-window and overlap guards remain
+ * separate and are still applied by the caller.
+ */
+export function resegmentYouTubeASRByParagraphTiming(body, options = {}) {
+	const {
+		softWidth = 52,
+		hardWidth = 64,
+		maximumGap = 280,
+		strongGap = 700,
+		maximumDuration = 6500,
+	} = options;
+	const timedTextBody = body?.timedtext?.body;
+	if (!timedTextBody) return { applied: false, reason: "no-body", input: 0, visible: 0, output: 0, removedEmpty: 0, merged: 0 };
+
+	let paragraphs = timedTextBody.p;
+	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
+	const stream = [];
+	let removedEmpty = 0;
+
+	for (const paragraph of paragraphs) {
+		const parsed = readYouTubeTimedTextParagraph(paragraph);
+		const text = normalizeText(parsed.text).trim();
+		const start = parsePositiveInteger(paragraph?.["@t"], true);
+		const duration = parsePositiveInteger(paragraph?.["@d"]);
+		if (!text || text === ZERO_WIDTH_SPACE) {
+			removedEmpty += 1;
+			continue;
+		}
+		if (!Number.isFinite(start)) continue;
+		stream.push({
+			paragraph,
+			parsed,
+			text,
+			start,
+			duration: Number.isFinite(duration) ? duration : undefined,
+			end: Number.isFinite(duration) ? start + duration : undefined,
+		});
+	}
+
+	if (stream.length < 2) {
+		return { applied: false, reason: "insufficient-visible-paragraphs", input: paragraphs.length, visible: stream.length, output: paragraphs.length, removedEmpty, merged: 0 };
+	}
+
+	const groups = [];
+	let index = 0;
+	while (index < stream.length) {
+		const first = stream[index];
+		let text = "";
+		let bestEnd = index;
+		let bestScore = Number.NEGATIVE_INFINITY;
+		let lastAllowed = index;
+
+		for (let cursor = index; cursor < stream.length; cursor += 1) {
+			const item = stream[cursor];
+			if (cursor > index) {
+				const previous = stream[cursor - 1];
+				const gap = Number.isFinite(previous.end) ? item.start - previous.end : item.start - previous.start;
+				if (gap > strongGap || gap < -120) break;
+			}
+			const candidate = joinYouTubeCaptionFragments(text, item.text).trim();
+			const width = measureYouTubeCaptionWidth(candidate);
+			const next = stream[cursor + 1];
+			const duration = (Number.isFinite(item.end) ? item.end : item.start) - first.start;
+			const nextGap = next ? (Number.isFinite(item.end) ? next.start - item.end : next.start - item.start) : Number.POSITIVE_INFINITY;
+			const strongPunctuation = /[.!?。！？…]["'’”)]*$/u.test(candidate);
+			const weakPunctuation = /[,;:，；：]["'’”)]*$/u.test(candidate);
+			const shortFragment = countCaptionWords(item.text) <= 2 && measureYouTubeCaptionWidth(item.text) <= 14;
+			let score = -Math.abs(width - softWidth);
+			if (strongPunctuation) score += 120;
+			else if (weakPunctuation) score += 24;
+			if (nextGap > maximumGap) score += 90;
+			if (width >= 34 && width <= hardWidth) score += 18;
+			if (shortFragment && cursor === index) score -= 45;
+			if (shortFragment && cursor > index) score += 16;
+			if (duration >= 1500 && duration <= 5200) score += 8;
+
+			if (width <= hardWidth && duration <= maximumDuration) {
+				text = candidate;
+				lastAllowed = cursor;
+				if (score > bestScore) {
+					bestScore = score;
+					bestEnd = cursor;
+				}
+				if (strongPunctuation && width >= 18) break;
+				if (nextGap > maximumGap && width >= 18) break;
+				continue;
+			}
+			break;
+		}
+
+		if (bestEnd < index || bestEnd > lastAllowed) bestEnd = lastAllowed;
+		const items = stream.slice(index, bestEnd + 1);
+		let groupText = "";
+		for (const item of items) groupText = joinYouTubeCaptionFragments(groupText, item.text);
+		const last = items.at(-1);
+		groups.push({
+			start: first.start,
+			end: Number.isFinite(last?.end) ? last.end : last?.start + 2000,
+			text: groupText.trim(),
+			template: first.paragraph,
+			segmented: items.some(item => item.parsed.segmented),
+		});
+		index = bestEnd + 1;
+	}
+
+	const output = groups.map((group, groupIndex) => {
+		const cue = { ...group.template };
+		const nextStart = groups[groupIndex + 1]?.start;
+		const end = Number.isFinite(nextStart) && nextStart > group.start ? Math.min(group.end, nextStart) : group.end;
+		cue["@t"] = String(group.start);
+		cue["@d"] = String(Math.max(1, end - group.start));
+		delete cue["@w"];
+		delete cue["@a"];
+		setYouTubeTimedTextParagraphText(cue, group.text, group.segmented);
+		return cue;
+	});
+
+	timedTextBody.p = output;
+	return {
+		applied: true,
+		reason: "paragraph-timing",
+		input: paragraphs.length,
+		visible: stream.length,
+		output: output.length,
+		removedEmpty,
+		merged: Math.max(0, stream.length - output.length),
+	};
+}
+
 export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 	const {
 		softWidth = 44,
