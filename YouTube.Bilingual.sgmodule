@@ -1,10 +1,10 @@
-#!name=YouTube 自动简中双语字幕 v30
-#!desc=v30 实验性利用 YouTube ASR 词片段时间重建句界；无细粒度时间时自动回退 v29
+#!name=YouTube 自动简中双语字幕 v31
+#!desc=v31 自动字幕改用 p 级时间流先重组再翻译；保留 v30/v29 回退及既有防重叠逻辑
 #!author=Hey-sayiwanna
 #!homepage=https://github.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge
 #!icon=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/src/assets/icon_rounded.png
 #!category=YouTube
-#!version=30.0
+#!version=31.0
 
 [Script]
 
@@ -23,7 +23,7 @@ DualSubs.AutoZH.GetWatch.response.proto = type=http-response, pattern=^https?:\/
 
 DualSubs.AutoZH.TimedText.request = type=http-request, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext(\?.+)?$, script-path=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/force_translate_request.js
 
-DualSubs.AutoZH.TimedText.Translate.response = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext\?.*subtype=Translate.*$, requires-body=1, max-size=-1, timeout=60, engine=webview, debug=true, script-path=https://cdn.jsdelivr.net/gh/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge@main/Translate.response.youtube-fix-v30.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=ALL
+DualSubs.AutoZH.TimedText.Translate.response = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext\?.*subtype=Translate.*$, requires-body=1, max-size=-1, timeout=60, engine=webview, debug=true, script-path=https://cdn.jsdelivr.net/gh/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge@main/Translate.response.youtube-fix-v31.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=ALL
 
 [MITM]
 hostname = %APPEND% www.youtube.com, m.youtube.com, tv.youtube.com, youtubei.googleapis.com
