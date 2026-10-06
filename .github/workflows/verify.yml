@@ -19,6 +19,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm test
+      - name: Test request path
+        run: npm run test:request
+      - name: Test XML transforms
+        run: npm run test:xml
+      - name: Test runtime bundle
+        run: npm run test:bundle
+      - name: Test module independence
+        run: npm run test:independence
       - name: Confirm generated bundles are committed
         run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v18.bundle.js
