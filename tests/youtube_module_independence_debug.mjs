@@ -16,7 +16,7 @@ assert.doesNotMatch(moduleSource, /Hey-sayiwanna\/Universal/);
 assert.doesNotMatch(moduleSource, /Composite\.response/);
 assert.match(moduleSource, new RegExp(`${repository}/main/request\\.youtube-standalone-v18\\.bundle\\.js`));
 assert.match(moduleSource, new RegExp(`${repository}/main/response\\.youtube-standalone-v18\\.bundle\\.js`));
-assert.match(moduleSource, new RegExp(`${repository}/main/Translate\\.response\\.youtube-fix-v32\\.bundle\\.js`));
+assert.match(moduleSource, new RegExp(`(?:${repository}/main|${repository}@main)/Translate\\.response\\.youtube-fix-v32\\.bundle\\.js`));
 assert.match(moduleSource, new RegExp(`${repository}/main/force_translate_request\\.js`));
 assert.match(moduleSource, /DualSubs\.AutoZH\.Player\.response\.proto = type=http-response/);
 
