@@ -629,11 +629,10 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		return { forbid: true, reason: "right-dependent-phrase" };
 	}
 
-	// "to ..." can begin a useful second phrase, but not after a modal construction such as "will go | to school".
+	// A leading "to" is usually a complement or prepositional phrase attached to the left side.
+	// Keep it attached unless the hard display limit later forces a fallback split.
 	if (rightFirst === "to") {
-		if (isYouTubeASRAuxiliary(leftPenultimate)) return { forbid: true, reason: "verb-complement" };
-		if (currentWidth >= 34 && rightSecond) return { weak: true, reason: "to-phrase" };
-		return { forbid: true, reason: "short-to-phrase" };
+		return { forbid: true, reason: "to-dependent-phrase" };
 	}
 
 	if (rightFirst === "then" && hasYouTubeASRClauseCore(rightWords.slice(1, 8))) {
@@ -711,11 +710,33 @@ function hasYouTubeASRClauseCore(words) {
 	if (!words.length) return false;
 	const first = words[0];
 	if (/^(?:i|you|he|she|it|we|they)['’](?:m|re|ve|d|ll|s)$/u.test(first)) return true;
-	if (isYouTubeASRPersonalSubject(first)) return hasYouTubeASRFinitePredicate(words, 1, 4);
-	if (isYouTubeASRPossessiveDeterminer(first) || isYouTubeASRArticle(first) || isYouTubeASRDemonstrative(first)) {
-		return hasYouTubeASRFinitePredicate(words, 1, 5);
+
+	if (isYouTubeASRPersonalSubject(first)) {
+		return hasYouTubeASRFinitePredicate(words, 1, 4) || looksLikeYouTubeASRBarePredicate(words, 1);
 	}
-	return hasYouTubeASRFinitePredicate(words, 1, 4);
+
+	if (isYouTubeASRPossessiveDeterminer(first) || isYouTubeASRArticle(first) || isYouTubeASRDemonstrative(first)) {
+		if (hasYouTubeASRFinitePredicate(words, 1, 5)) return true;
+		// determiner + noun + bare predicate, e.g. "the children go to school".
+		return looksLikeYouTubeASRBarePredicate(words, 2);
+	}
+
+	return hasYouTubeASRFinitePredicate(words, 1, 4) || looksLikeYouTubeASRBarePredicate(words, 1);
+}
+
+function looksLikeYouTubeASRBarePredicate(words, predicateIndex) {
+	const predicate = words[predicateIndex];
+	const next = words[predicateIndex + 1];
+	if (!predicate || !next) return false;
+	if (isYouTubeASRFunctionWord(predicate) || isYouTubeASRAuxiliary(predicate)) return false;
+
+	// Infer a predicate from its syntactic continuation rather than a growing verb dictionary.
+	// Examples: "khabib got a hold", "children go to school", "people love eating".
+	if (isYouTubeASRArticle(next) || isYouTubeASRPossessiveDeterminer(next) || isYouTubeASRDemonstrative(next)) return true;
+	if (next === "to" || next === "that") return true;
+	if (/^(?:i|you|he|she|it|we|they)['’](?:m|re|ve|d|ll|s)$/u.test(next)) return true;
+	if (/^[a-z]+ing$/u.test(next)) return true;
+	return false;
 }
 
 function isYouTubeASRPersonalSubject(word) {
