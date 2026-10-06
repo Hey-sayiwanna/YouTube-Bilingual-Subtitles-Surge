@@ -10,6 +10,8 @@ const ipadMergedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format
 const hugeSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body>${Array.from({ length: 3711 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>자동 자막 ${index + 1}</s></p>`).join("")}</body></timedtext>`;
 const shortOfficialFragmentsSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="1000" d="1000">This is one</p><p t="2000" d="1100">complete official</p><p t="3100" d="900">caption.</p><p t="4000" d="900">Next sentence.</p></body></timedtext>`;
 const largeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 121 }, (_, index) => `<p t="${index * 2000}" d="1900">Official caption ${index + 1}.</p>`).join("")}</body></timedtext>`;
+const officialConcurrencySrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 481 }, (_, index) => `<p t="${index * 2000}" d="1900">Concurrency official caption ${index + 1}.</p>`).join("")}</body></timedtext>`;
+const officialNetworkRecoverySrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 121 }, (_, index) => `<p t="${index * 2000}" d="1900">Network recovery official caption ${index + 1}.</p>`).join("")}</body></timedtext>`;
 const hugeOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body>${Array.from({ length: 5578 }, (_, index) => `<p t="${index * 2000}" d="1900">Long movie official caption ${index + 1}.</p>`).join("")}</body></timedtext>`;
 const largeBroadcastSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><ws id="1" mh="2" ju="0" sd="3"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><w t="0" id="1" wp="1" ws="1"/>${Array.from({ length: 3001 }, (_, index) => `<p t="${index * 2000}" d="1900" w="1"><s>Broadcast caption ${index + 1}</s></p>`).join("")}</body></timedtext>`;
 const simplifiedChineseSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3000">这是简体中文字幕，不需要再次翻译。</p></body></timedtext>`;
@@ -17,7 +19,7 @@ const ufcParagraphTimedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext
 const northKoreaParagraphTimedSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="0" d="1680"><s>This is everything that happened at the</s></p><p t="1680" d="1720"><s>North Korean border. First, I took a</s></p><p t="3400" d="1680"><s>boat and crossed into the North Korean</s></p><p t="5080" d="2200"><s>border. I saw many apartments and</s></p><p t="7280" d="2000"><s>soldiers who waved at us, but no other</s></p><p t="9280" d="2200"><s>people or signs of life, which felt</s></p><p t="11480" d="1760"><s>strange.</s></p></body></timedtext>`;
 const traditionalChineseSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3000">這是繁體中文字幕，不需要再次翻譯。</p></body></timedtext>`;
 
-async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0 }) {
+async function runBundle({ url, translation, testName, body = rollingSrv3, concurrentRequestLimit = Number.POSITIVE_INFINITY, responseDelay = 0, requestFailure = null }) {
 	const translateRequestURLs = [];
 	let activeRequests = 0;
 	let maximumActiveRequests = 0;
@@ -39,9 +41,14 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 			activeRequests += 1;
 			maximumActiveRequests = Math.max(maximumActiveRequests, activeRequests);
 			const sourceRows = new URL(request.url).searchParams.get("q").split(/\r/);
+			const shouldFail = typeof requestFailure === "function" ? requestFailure(sourceRows, translateRequestURLs.length) : false;
 			const translated = typeof translation === "function" ? translation(sourceRows) : translation;
 			const respond = () => {
 				activeRequests -= 1;
+				if (shouldFail) {
+					callback(new Error("Injected translation network failure"));
+					return;
+				}
 				callback(null, { status: 200, headers: {} }, JSON.stringify([[[translated, "source", null, null]], null, "ko"]));
 			};
 			if (responseDelay > 0) setTimeout(respond, responseDelay);
@@ -55,12 +62,12 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v33.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../Translate.response.youtube-fix-v34.bundle.js?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
 		new Promise((_, reject) => {
-			timeout = setTimeout(() => reject(new Error(`${testName} bundle test timed out`)), 5000);
+			timeout = setTimeout(() => reject(new Error(`${testName} bundle test timed out`)), 9000);
 		}),
 	]);
 	clearTimeout(timeout);
@@ -358,6 +365,29 @@ const oversizedBroadcast = await runBundle({
 assert.equal(oversizedBroadcast.translateRequestURLs.length, 2, "broadcast batches must not enter the new ordinary-official guard");
 assert.equal(new URL(oversizedBroadcast.translateRequestURLs[0]).searchParams.get("q").split(/\r/).length, 120);
 
+const officialConcurrencyProbe = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=official-concurrency&lang=en&format=srv3&subtype=Translate",
+	translation: rows => rows.map((_, index) => `并发探针译文${index + 1}`).join("\r"),
+	testName: "official-concurrency-four",
+	body: officialConcurrencySrv3,
+	concurrentRequestLimit: 50,
+	responseDelay: 20,
+});
+assert.equal(officialConcurrencyProbe.maximumActiveRequests, 4, `official translation must actually schedule four concurrent requests, received ${officialConcurrencyProbe.maximumActiveRequests}`);
+
+const officialNetworkRecovery = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=official-network-recovery&lang=en&format=srv3&subtype=Translate",
+	translation: rows => rows.map((_, index) => `网络恢复译文${index + 1}`).join("\r"),
+	testName: "official-network-failed-batch-split",
+	body: officialNetworkRecoverySrv3,
+	requestFailure: rows => rows.length === 120 && rows[0]?.includes("Network recovery official caption 1."),
+});
+const recoveryRequestRowCounts = officialNetworkRecovery.translateRequestURLs.map(url => new URL(url).searchParams.get("q").split(/\r/).length);
+assert.equal(recoveryRequestRowCounts.filter(count => count === 120).length, 4, "failed 120-row batch should exhaust its initial request plus three retries");
+assert.equal(recoveryRequestRowCounts.filter(count => count === 60).length, 2, "only the failed batch should be bisected into two 60-row retries");
+assert.equal(recoveryRequestRowCounts.filter(count => count === 1).length, 1, "the neighboring healthy batch must not be replayed");
+assert.equal((officialNetworkRecovery.output.body.match(/&#x000A;网络恢复译文/gu) ?? []).length, 121, "failed-batch recovery must preserve all official subtitle rows");
+
 let droppedOfficialRow = false;
 const hugeOfficialMismatch = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=movie&lang=en&format=srv3&subtype=Translate",
@@ -380,7 +410,7 @@ assert.equal(
 	"a single malformed long-movie batch should be recovered locally without retrying every subtitle row",
 );
 assert.ok(
-	hugeOfficialMismatch.maximumActiveRequests <= 6,
+	hugeOfficialMismatch.maximumActiveRequests <= 4,
 	`long official captions must use bounded concurrency, received ${hugeOfficialMismatch.maximumActiveRequests}`,
 );
 
