@@ -259,7 +259,9 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 		strongPauseThreshold = 950,
 		maximumDuration = 6500,
 		minimumTimedSegments = 6,
-		minimumTimingCoverage = 0.6,
+		minimumTimingCoverage = 1,
+		minimumExplicitTimedSegments = 4,
+		minimumExplicitTimingCoverage = 0.35,
 	} = options;
 	const timedTextBody = body?.timedtext?.body;
 	if (!timedTextBody) return { applied: false, reason: "no-body", input: 0, output: 0, segments: 0, timedSegments: 0, boundaries: 0 };
@@ -269,6 +271,7 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 	const stream = [];
 	let segmentCount = 0;
 	let timedSegmentCount = 0;
+	let explicitTimedSegmentCount = 0;
 	let originalEnd = 0;
 
 	for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex += 1) {
@@ -289,6 +292,7 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 			const offset = rawOffset === undefined && segmentIndex === 0 ? 0 : parsePositiveInteger(rawOffset, true);
 			if (!Number.isFinite(offset)) continue;
 			timedSegmentCount += 1;
+			if (rawOffset !== undefined) explicitTimedSegmentCount += 1;
 			stream.push({
 				start: paragraphStart + offset,
 				text,
@@ -299,7 +303,8 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 	}
 
 	const coverage = segmentCount ? timedSegmentCount / segmentCount : 0;
-	if (timedSegmentCount < minimumTimedSegments || coverage < minimumTimingCoverage || stream.length < 2) {
+	const explicitCoverage = segmentCount ? explicitTimedSegmentCount / segmentCount : 0;
+	if (timedSegmentCount < minimumTimedSegments || coverage < minimumTimingCoverage || explicitTimedSegmentCount < minimumExplicitTimedSegments || explicitCoverage < minimumExplicitTimingCoverage || stream.length < 2) {
 		return {
 			applied: false,
 			reason: "insufficient-segment-timing",
@@ -308,6 +313,8 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 			segments: segmentCount,
 			timedSegments: timedSegmentCount,
 			coverage,
+			explicitTimedSegments: explicitTimedSegmentCount,
+			explicitCoverage,
 			boundaries: 0,
 		};
 	}
@@ -320,7 +327,7 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 		deduplicated.push(item);
 	}
 	if (deduplicated.length < 2) {
-		return { applied: false, reason: "insufficient-unique-segments", input: paragraphs.length, output: paragraphs.length, segments: segmentCount, timedSegments: timedSegmentCount, coverage, boundaries: 0 };
+		return { applied: false, reason: "insufficient-unique-segments", input: paragraphs.length, output: paragraphs.length, segments: segmentCount, timedSegments: timedSegmentCount, explicitTimedSegments: explicitTimedSegmentCount, coverage, explicitCoverage, boundaries: 0 };
 	}
 
 	const groups = [];
@@ -406,7 +413,9 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 		output: output.length,
 		segments: segmentCount,
 		timedSegments: timedSegmentCount,
+		explicitTimedSegments: explicitTimedSegmentCount,
 		coverage,
+		explicitCoverage,
 		boundaries: Math.max(0, output.length - 1),
 	};
 }
