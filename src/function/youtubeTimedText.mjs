@@ -635,6 +635,7 @@ function isYouTubeASRSubordinator(word) {
 function hasYouTubeASRClauseCore(words) {
 	if (!words.length) return false;
 	const first = words[0];
+	if (/^(?:i|you|he|she|it|we|they)['’](?:m|re|ve|d|ll|s)$/u.test(first)) return true;
 	if (isYouTubeASRPersonalSubject(first)) return hasYouTubeASRFinitePredicate(words, 1, 4);
 	if (isYouTubeASRPossessiveDeterminer(first) || isYouTubeASRArticle(first) || isYouTubeASRDemonstrative(first)) {
 		return hasYouTubeASRFinitePredicate(words, 1, 5);
