@@ -367,41 +367,57 @@ export function splitYouTubeCaptionText(text, softWidth = 40, comfortableWidth =
 
 	const parts = [];
 	let remaining = text;
-	while (measureYouTubeCaptionWidth(remaining) > hardWidth) {
-		const end = chooseSemanticCaptionBreak(remaining, softWidth, comfortableWidth, hardWidth);
-		if (!end || end >= remaining.length) break;
-		const part = remaining.slice(0, end).trim();
+	while (measureYouTubeCaptionWidth(remaining) > comfortableWidth) {
+		const remainingWidth = measureYouTubeCaptionWidth(remaining);
+		const semanticEnd = chooseSemanticCaptionBreak(remaining, softWidth, comfortableWidth);
+		if (semanticEnd) {
+			const part = remaining.slice(0, semanticEnd).trim();
+			if (part) parts.push(part);
+			remaining = remaining.slice(semanticEnd).trim();
+			continue;
+		}
+		if (remainingWidth <= hardWidth) break;
+		const fallbackEnd = chooseFallbackCaptionBreak(remaining, softWidth, hardWidth);
+		if (!fallbackEnd || fallbackEnd >= remaining.length) break;
+		const part = remaining.slice(0, fallbackEnd).trim();
 		if (part) parts.push(part);
-		remaining = remaining.slice(end).trim();
+		remaining = remaining.slice(fallbackEnd).trim();
 	}
 	if (remaining) parts.push(remaining);
 	return parts;
 }
 
-function chooseSemanticCaptionBreak(text, softWidth, comfortableWidth, hardWidth) {
+function chooseSemanticCaptionBreak(text, softWidth, comfortableWidth) {
 	const candidates = [];
 	for (const match of text.matchAll(/[.!?。！？…]+["'’”)]*\\s*/gu)) {
 		const end = (match.index ?? 0) + match[0].length;
 		const width = measureYouTubeCaptionWidth(text.slice(0, end));
-		if (width >= softWidth * 0.55 && width <= hardWidth) candidates.push({ end, width, rank: 0 });
+		const restWidth = measureYouTubeCaptionWidth(text.slice(end).trim());
+		if (width >= softWidth * 0.55 && width <= comfortableWidth && restWidth >= 12) candidates.push({ end, width, rank: 0 });
 	}
 	for (const match of text.matchAll(/[,;:，；：]+\\s*/gu)) {
 		const end = (match.index ?? 0) + match[0].length;
 		const width = measureYouTubeCaptionWidth(text.slice(0, end));
-		if (width >= softWidth * 0.7 && width <= hardWidth) candidates.push({ end, width, rank: 1 });
+		const restWidth = measureYouTubeCaptionWidth(text.slice(end).trim());
+		if (width >= softWidth * 0.75 && width <= comfortableWidth && restWidth >= 16) candidates.push({ end, width, rank: 1 });
 	}
+	if (!candidates.length) return 0;
+	candidates.sort((a, b) => a.rank - b.rank || Math.abs(a.width - softWidth) - Math.abs(b.width - softWidth));
+	return candidates[0].end;
+}
+
+function chooseFallbackCaptionBreak(text, softWidth, hardWidth) {
+	const candidates = [];
 	for (const match of text.matchAll(/\\s+/gu)) {
 		const end = (match.index ?? 0) + match[0].length;
 		const width = measureYouTubeCaptionWidth(text.slice(0, end));
-		if (width >= softWidth * 0.8 && width <= hardWidth) candidates.push({ end, width, rank: 2 });
+		if (width >= softWidth && width <= hardWidth) candidates.push({ end, width });
 	}
-	if (!candidates.length) return findHardCaptionBreak(text, hardWidth);
-
-	const viableStrong = candidates.filter(candidate => candidate.rank === 0 && candidate.width <= comfortableWidth);
-	const viableWeak = candidates.filter(candidate => candidate.rank === 1 && candidate.width <= comfortableWidth);
-	const pool = viableStrong.length ? viableStrong : viableWeak.length ? viableWeak : candidates;
-	pool.sort((a, b) => a.rank - b.rank || Math.abs(a.width - softWidth) - Math.abs(b.width - softWidth));
-	return pool[0].end;
+	if (candidates.length) {
+		candidates.sort((a, b) => Math.abs(a.width - hardWidth * 0.82) - Math.abs(b.width - hardWidth * 0.82));
+		return candidates[0].end;
+	}
+	return findHardCaptionBreak(text, hardWidth);
 }
 
 function findHardCaptionBreak(text, hardWidth) {
