@@ -238,6 +238,179 @@ function splitOfficialCaptionAtStrongSentenceBoundary(text, minimumWidth) {
 	return [text.slice(0, end).trim(), text.slice(end).trim()];
 }
 
+
+/**
+ * Rebuild automatic-caption cues from YouTube srv3 segment timing.
+ *
+ * ASR <p> blocks are timing/display windows rather than reliable sentences.
+ * When enough <s t="..."> offsets are available, flatten adjacent segments
+ * into one timed stream and choose cue boundaries from punctuation, pauses
+ * and display width. No language-specific subject/pronoun word list is used.
+ *
+ * If segment timing is missing or sparse, leave the body untouched so the
+ * conservative v29 paragraph path can be used as a fallback.
+ */
+export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
+	const {
+		softWidth = 44,
+		hardWidth = 64,
+		minimumWidth = 22,
+		pauseThreshold = 650,
+		strongPauseThreshold = 950,
+		maximumDuration = 6500,
+		minimumTimedSegments = 6,
+		minimumTimingCoverage = 0.6,
+	} = options;
+	const timedTextBody = body?.timedtext?.body;
+	if (!timedTextBody) return { applied: false, reason: "no-body", input: 0, output: 0, segments: 0, timedSegments: 0, boundaries: 0 };
+
+	let paragraphs = timedTextBody.p;
+	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
+	const stream = [];
+	let segmentCount = 0;
+	let timedSegmentCount = 0;
+	let originalEnd = 0;
+
+	for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex += 1) {
+		const paragraph = paragraphs[paragraphIndex];
+		const paragraphStart = parsePositiveInteger(paragraph?.["@t"], true);
+		const paragraphDuration = parsePositiveInteger(paragraph?.["@d"]);
+		if (Number.isFinite(paragraphStart) && Number.isFinite(paragraphDuration)) {
+			originalEnd = Math.max(originalEnd, paragraphStart + paragraphDuration);
+		}
+		if (!Number.isFinite(paragraphStart) || !paragraph?.s) continue;
+		const segments = Array.isArray(paragraph.s) ? paragraph.s : [paragraph.s];
+		for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+			const segment = segments[segmentIndex];
+			const text = normalizeText(segment?.["#"] ?? "");
+			if (!text || text === ZERO_WIDTH_SPACE) continue;
+			segmentCount += 1;
+			const rawOffset = segment?.["@t"];
+			const offset = rawOffset === undefined && segmentIndex === 0 ? 0 : parsePositiveInteger(rawOffset, true);
+			if (!Number.isFinite(offset)) continue;
+			timedSegmentCount += 1;
+			stream.push({
+				start: paragraphStart + offset,
+				text,
+				paragraph,
+				paragraphIndex,
+			});
+		}
+	}
+
+	const coverage = segmentCount ? timedSegmentCount / segmentCount : 0;
+	if (timedSegmentCount < minimumTimedSegments || coverage < minimumTimingCoverage || stream.length < 2) {
+		return {
+			applied: false,
+			reason: "insufficient-segment-timing",
+			input: paragraphs.length,
+			output: paragraphs.length,
+			segments: segmentCount,
+			timedSegments: timedSegmentCount,
+			coverage,
+			boundaries: 0,
+		};
+	}
+
+	stream.sort((left, right) => left.start - right.start || left.paragraphIndex - right.paragraphIndex);
+	const deduplicated = [];
+	for (const item of stream) {
+		const previous = deduplicated.at(-1);
+		if (previous && item.start === previous.start && normalizeText(item.text).trim() === normalizeText(previous.text).trim()) continue;
+		deduplicated.push(item);
+	}
+	if (deduplicated.length < 2) {
+		return { applied: false, reason: "insufficient-unique-segments", input: paragraphs.length, output: paragraphs.length, segments: segmentCount, timedSegments: timedSegmentCount, coverage, boundaries: 0 };
+	}
+
+	const groups = [];
+	let groupStart = 0;
+	while (groupStart < deduplicated.length) {
+		let combined = "";
+		let best;
+		let forcedEnd = deduplicated.length - 1;
+
+		for (let index = groupStart; index < deduplicated.length; index += 1) {
+			combined = joinYouTubeCaptionFragments(combined, deduplicated[index].text);
+			const width = measureYouTubeCaptionWidth(combined.trim());
+			const next = deduplicated[index + 1];
+			if (!next) {
+				forcedEnd = index;
+				best = { end: index, score: Number.POSITIVE_INFINITY };
+				break;
+			}
+
+			const duration = next.start - deduplicated[groupStart].start;
+			const step = Math.max(0, next.start - deduplicated[index].start);
+			const trimmed = combined.trim();
+			const strongPunctuation = /[.!?。！？…]["'’”)]*$/u.test(trimmed);
+			const weakPunctuation = /[,;:，；：]["'’”)]*$/u.test(trimmed);
+			const readableWidth = width >= minimumWidth;
+			let score = -Math.abs(width - softWidth);
+			if (strongPunctuation) score += 120;
+			else if (weakPunctuation) score += 35;
+			if (step >= strongPauseThreshold) score += 95;
+			else if (step >= pauseThreshold) score += 65;
+			else if (step >= 450) score += 25;
+			if (width >= softWidth * 0.75 && width <= softWidth * 1.25) score += 18;
+			if (duration >= 1800 && duration <= 5200) score += 10;
+
+			const meaningfulBoundary =
+				(strongPunctuation && width >= 12) ||
+				(readableWidth && (step >= pauseThreshold || weakPunctuation || width >= softWidth * 0.72));
+			if (meaningfulBoundary && (!best || score > best.score)) best = { end: index, score };
+
+			const mustBreak = width >= hardWidth || duration >= maximumDuration;
+			if (mustBreak) {
+				forcedEnd = index;
+				break;
+			}
+			forcedEnd = index;
+		}
+
+		const groupEnd = best?.end ?? forcedEnd;
+		const items = deduplicated.slice(groupStart, groupEnd + 1);
+		let text = "";
+		for (const item of items) text = joinYouTubeCaptionFragments(text, item.text);
+		groups.push({
+			start: items[0].start,
+			text: text.trim(),
+			template: items[0].paragraph,
+		});
+		groupStart = groupEnd + 1;
+	}
+
+	if (!groups.length) {
+		return { applied: false, reason: "no-groups", input: paragraphs.length, output: paragraphs.length, segments: segmentCount, timedSegments: timedSegmentCount, coverage, boundaries: 0 };
+	}
+
+	const output = groups.map((group, index) => {
+		const cue = { ...group.template };
+		const nextStart = groups[index + 1]?.start;
+		const fallbackEnd = originalEnd > group.start ? originalEnd : group.start + 2500;
+		const end = Number.isFinite(nextStart) && nextStart > group.start ? nextStart : fallbackEnd;
+		cue["@t"] = String(group.start);
+		cue["@d"] = String(Math.max(1, end - group.start));
+		delete cue["@w"];
+		delete cue["@a"];
+		delete cue["#"];
+		cue.s = { "#": group.text };
+		return cue;
+	});
+
+	timedTextBody.p = output;
+	return {
+		applied: true,
+		reason: "segment-timing",
+		input: paragraphs.length,
+		output: output.length,
+		segments: segmentCount,
+		timedSegments: timedSegmentCount,
+		coverage,
+		boundaries: Math.max(0, output.length - 1),
+	};
+}
+
 export function rebalanceYouTubeASRSentenceBoundaries(body, maximumGap = 450) {
 	const timedTextBody = body?.timedtext?.body;
 	if (!timedTextBody) return { movedTail: 0, movedHead: 0 };
