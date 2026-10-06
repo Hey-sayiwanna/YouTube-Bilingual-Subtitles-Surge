@@ -23,6 +23,13 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ## 更新日志
 
+### 2026-10-07 · v29
+
+- **自动字幕句界重平衡**：在拆分前检查相邻 ASR cue，保守修复“上一句最后 1～2 个词掉到下一 cue”以及“下一句开头 1～2 个词被带到上一 cue”的明显错位；仅在相邻时间连续、文本很短且存在明确强标点证据时移动。
+- **语言边界优先**：自动字幕切分优先级改为 `. ? ! …` 等强句界，其次为 `, ; :` 等弱句界；普通空格不再与句号同级。
+- **长度限制降级为保险丝**：40 仅作为寻找自然切点的软目标，正常语义允许延长到约 56；56～64 之间若没有合适标点边界则保持完整，超过 64 才允许按空格或硬边界兜底，避免再次出现超长字幕。
+- **保持既有修复**：v27 的官方翻译 2 路有限并发与 15 秒内部请求超时、v28 的官方字幕超长强句界拆分均保持不变。
+
 ### 2026-10-07
 
 - **v28**：在 v27 稳定翻译调度基础上，仅对显示宽度超过 70、且句子内部存在 `. ? ! …` 等强句界的普通官方字幕进行保守二次拆分；
@@ -73,7 +80,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 | `src/function/youtubeTimedText.mjs` | 自动字幕两行显示与长句处理 |
 | `request.youtube-standalone-v18.bundle.js` | YouTube Player 请求脚本 |
 | `response.youtube-standalone-v18.bundle.js` | YouTube Player / GetWatch 响应脚本 |
-| `Translate.response.youtube-fix-v28.bundle.js` | 当前 v28 字幕响应脚本（包含 v27 翻译稳定性修复与 v28 官方长句保守拆分） |
+| `Translate.response.youtube-fix-v29.bundle.js` | 当前 v29 字幕响应脚本（包含 v27 翻译稳定性、v28 官方长句拆分与 v29 ASR 语义边界优化） |
 | `tests/` | 自动字幕、官方字幕和模块独立性测试 |
 
 ## 开源说明
