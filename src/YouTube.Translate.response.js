@@ -176,15 +176,15 @@ async function Translator(method = "Part", text = [], isAutomaticCaption = false
 	} else if (useBoundedQueue) {
 		Console.info(`YouTube official translation batches: rows=${text.length}, batches=${parts.length}, maxBatchRows=120, scheduler=bounded-${SETTINGS.OfficialMaxConcurrency}`);
 	}
-	const translatePart = (part, index) => translateBatch(part, `${index + 1}/${parts.length}`, useBoundedQueue, captionType);
+	const translatePart = (part, index) => translateBatch(part, `${index + 1}/${parts.length}`, useBoundedQueue, captionType, { allowPost: isLongOfficialTrack });
 	const translatedParts = useBoundedQueue
 		? await mapWithConcurrency(parts, maximumConcurrency, translatePart)
 		: await Promise.all(parts.map(translatePart));
 	return translatedParts.flat(Number.POSITIVE_INFINITY);
 }
 
-async function translateBatch(part, label, useBoundedQueue, captionType) {
-	const translation = await retry(() => googleTranslate(part), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
+async function translateBatch(part, label, useBoundedQueue, captionType, options = {}) {
+	const translation = await retry(() => googleTranslate(part, options), SETTINGS.Times, SETTINGS.Interval, SETTINGS.Exponential);
 	if (translation.length === part.length) return translation;
 	Console.warn(`YouTube ${captionType} batch mismatch: batch=${label}, expected=${part.length}, received=${translation.length}; retry smaller`);
 	if (part.length <= 1) return [normalizeTranslation(translation)];
@@ -192,18 +192,18 @@ async function translateBatch(part, label, useBoundedQueue, captionType) {
 	const middle = Math.ceil(part.length / 2);
 	const halves = [part.slice(0, middle), part.slice(middle)];
 	if (useBoundedQueue) {
-		const first = await translateBatch(halves[0], `${label}.1`, true, captionType);
-		const second = await translateBatch(halves[1], `${label}.2`, true, captionType);
+		const first = await translateBatch(halves[0], `${label}.1`, true, captionType, options);
+		const second = await translateBatch(halves[1], `${label}.2`, true, captionType, options);
 		return [...first, ...second];
 	}
-	return await Promise.all(halves.map((half, index) => translateBatch(half, `${label}.${index + 1}`, false, captionType))).then(result => result.flat(Number.POSITIVE_INFINITY));
+	return await Promise.all(halves.map((half, index) => translateBatch(half, `${label}.${index + 1}`, false, captionType, options))).then(result => result.flat(Number.POSITIVE_INFINITY));
 }
 
-async function googleTranslate(text) {
+async function googleTranslate(text, options = {}) {
 	text = Array.isArray(text) ? text : [text];
 	const joinedText = text.join("\r");
 	const encodedText = encodeURIComponent(joinedText);
-	const usePost = encodedText.length > SETTINGS.OfficialPostEncodedThreshold;
+	const usePost = Boolean(options.allowPost) && encodedText.length > SETTINGS.OfficialPostEncodedThreshold;
 	const request = {
 		method: usePost ? "POST" : "GET",
 		url: usePost
