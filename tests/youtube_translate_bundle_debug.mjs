@@ -126,14 +126,16 @@ for (let index = 0; index < northParagraphs.length - 1; index += 1) {
 
 const longAutomatic = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=test&kind=asr&lang=en&format=srv3&subtype=Translate",
-	translation: "这是很长的自动字幕。\r应该在自然位置拆分。\r避免它们互相重叠。\r下一条字幕。",
+	translation: rows => rows.map((_, index) => `长字幕译文${index + 1}`).join("\r"),
 	testName: "long-automatic",
 	body: longSrv3,
 });
 const longParagraphs = XML.parse(longAutomatic.output.body).timedtext.body.p;
-assert.equal(longParagraphs.length, 4);
-assert.match(longAutomatic.output.body, /This is a very long automatic caption,&#x000A;这是很长的自动字幕。/);
-assert.match(longAutomatic.output.body, /boundary before it overlaps\.&#x000A;避免它们互相重叠。/);
+const longOrigins = longParagraphs.map(paragraph => String(paragraph?.s?.["#"] ?? paragraph?.["#"] ?? "").split("\n")[0]);
+assert.ok(longParagraphs.length >= 3);
+assert.ok(longOrigins.every(text => Array.from(text).length <= 64), "v32 long ASR cues must stay inside the hard display limit");
+assert.ok(longOrigins.some(text => text.endsWith("before it overlaps.")), "v32 must preserve the strong sentence boundary");
+assert.equal(longOrigins.at(-1), "Next caption.", "v32 must not absorb a new sentence merely because it is short");
 for (let index = 0; index < longParagraphs.length - 1; index += 1) {
 	const currentEnd = Number(longParagraphs[index]["@t"]) + Number(longParagraphs[index]["@d"] ?? 0);
 	const nextStart = Number(longParagraphs[index + 1]["@t"]);
