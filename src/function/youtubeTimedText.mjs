@@ -606,13 +606,16 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		return { forbid: true, reason: "left-open-nominal-phrase" };
 	}
 
-	// Possessive/article/demonstrative may start a new sentence only when a finite predicate follows.
+	// Possessive/article/demonstrative may start a new sentence only when the
+	// nominal subject is followed by its own predicate. Do not scan through a
+	// later subject ("a hold of his ankles he's ...") and mistake that later
+	// clause for the predicate of the opening noun phrase.
 	if (
 		isYouTubeASRPossessiveDeterminer(rightFirst) ||
 		isYouTubeASRArticle(rightFirst) ||
 		isYouTubeASRDemonstrative(rightFirst)
 	) {
-		return hasYouTubeASRFinitePredicate(rightWords, 1, 6)
+		return hasYouTubeASRNominalSubjectPredicate(rightWords)
 			? { weak: true, reason: "nominal-subject-clause" }
 			: { forbid: true, reason: "dependent-noun-phrase" };
 	}
@@ -725,12 +728,30 @@ function hasYouTubeASRClauseCore(words) {
 	}
 
 	if (isYouTubeASRPossessiveDeterminer(first) || isYouTubeASRArticle(first) || isYouTubeASRDemonstrative(first)) {
-		if (hasYouTubeASRFinitePredicate(words, 1, 5)) return true;
-		// determiner + noun + bare predicate, e.g. "the children go to school".
-		return looksLikeYouTubeASRBarePredicate(words, 2);
+		return hasYouTubeASRNominalSubjectPredicate(words);
 	}
 
 	return hasYouTubeASRFinitePredicate(words, 1, 4) || looksLikeYouTubeASRBarePredicate(words, 1);
+}
+
+function hasYouTubeASRNominalSubjectPredicate(words) {
+	if (words.length < 3) return false;
+
+	for (let index = 2; index < Math.min(words.length, 7); index += 1) {
+		const word = words[index];
+
+		// A new explicit subject means the opening noun phrase has already ended
+		// without a predicate, so it is probably an object/complement.
+		if (isYouTubeASRPersonalSubject(word) || /^(?:i|you|he|she|it|we|they)['’](?:m|re|ve|d|ll|s)$/u.test(word)) {
+			return false;
+		}
+
+		if (isYouTubeASRAuxiliary(word)) return true;
+	}
+
+	// Bare lexical predicate immediately after the head noun:
+	// "the children go to school", "the weather begins to change".
+	return looksLikeYouTubeASRBarePredicate(words, 2);
 }
 
 function looksLikeYouTubeASRBarePredicate(words, predicateIndex) {
