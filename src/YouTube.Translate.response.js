@@ -64,7 +64,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	ensureYouTubeTimedTextRows(body, 2);
 	if (isAutomaticCaption) {
 		const timedResegment = resegmentYouTubeASRBySegmentTiming(body);
-		Console.info(`YouTube ASR timed-stream probe: applied=${timedResegment.applied}, reason=${timedResegment.reason}, segments=${timedResegment.timedSegments}/${timedResegment.segments}, coverage=${Number(timedResegment.coverage ?? 0).toFixed(2)}, input=${timedResegment.input}, output=${timedResegment.output}, boundaries=${timedResegment.boundaries}`);
+		Console.info(`YouTube ASR timed-stream probe: applied=${timedResegment.applied}, reason=${timedResegment.reason}, segments=${timedResegment.timedSegments}/${timedResegment.segments}, explicit=${timedResegment.explicitTimedSegments ?? 0}, coverage=${Number(timedResegment.coverage ?? 0).toFixed(2)}, input=${timedResegment.input}, output=${timedResegment.output}, boundaries=${timedResegment.boundaries}`);
 		const normalizedParagraphs = disableYouTubeASRRollingWindow(body);
 		Console.info(`YouTube ASR fixed two-line mode: ${normalizedParagraphs} paragraphs`);
 		if (!timedResegment.applied) {
