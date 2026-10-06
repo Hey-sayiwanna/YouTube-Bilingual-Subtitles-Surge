@@ -272,6 +272,7 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 	let segmentCount = 0;
 	let timedSegmentCount = 0;
 	let explicitTimedSegmentCount = 0;
+	let unsupportedVisibleParagraphs = 0;
 	let originalEnd = 0;
 
 	for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex += 1) {
@@ -281,7 +282,11 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 		if (Number.isFinite(paragraphStart) && Number.isFinite(paragraphDuration)) {
 			originalEnd = Math.max(originalEnd, paragraphStart + paragraphDuration);
 		}
-		if (!Number.isFinite(paragraphStart) || !paragraph?.s) continue;
+		const visibleParagraphText = readYouTubeTimedTextParagraph(paragraph).text;
+		if (!paragraph?.s || !Number.isFinite(paragraphStart)) {
+			if (visibleParagraphText && visibleParagraphText !== ZERO_WIDTH_SPACE) unsupportedVisibleParagraphs += 1;
+			continue;
+		}
 		const segments = Array.isArray(paragraph.s) ? paragraph.s : [paragraph.s];
 		for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
 			const segment = segments[segmentIndex];
@@ -304,7 +309,7 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 
 	const coverage = segmentCount ? timedSegmentCount / segmentCount : 0;
 	const explicitCoverage = segmentCount ? explicitTimedSegmentCount / segmentCount : 0;
-	if (timedSegmentCount < minimumTimedSegments || coverage < minimumTimingCoverage || explicitTimedSegmentCount < minimumExplicitTimedSegments || explicitCoverage < minimumExplicitTimingCoverage || stream.length < 2) {
+	if (unsupportedVisibleParagraphs > 0 || timedSegmentCount < minimumTimedSegments || coverage < minimumTimingCoverage || explicitTimedSegmentCount < minimumExplicitTimedSegments || explicitCoverage < minimumExplicitTimingCoverage || stream.length < 2) {
 		return {
 			applied: false,
 			reason: "insufficient-segment-timing",
@@ -315,6 +320,7 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 			coverage,
 			explicitTimedSegments: explicitTimedSegmentCount,
 			explicitCoverage,
+			unsupportedVisibleParagraphs,
 			boundaries: 0,
 		};
 	}
@@ -416,6 +422,7 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 		explicitTimedSegments: explicitTimedSegmentCount,
 		coverage,
 		explicitCoverage,
+		unsupportedVisibleParagraphs,
 		boundaries: Math.max(0, output.length - 1),
 	};
 }
