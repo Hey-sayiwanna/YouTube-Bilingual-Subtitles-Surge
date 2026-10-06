@@ -596,6 +596,11 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 			: { forbid: true, reason: "dependent-noun-phrase" };
 	}
 
+	// An auxiliary without its subject cannot start an independent cue.
+	if (isYouTubeASRAuxiliary(rightFirst)) {
+		return { forbid: true, reason: "orphan-auxiliary" };
+	}
+
 	// Subordinate clauses are good boundaries only when they actually contain a clause.
 	if (isYouTubeASRSubordinator(rightFirst) && hasYouTubeASRClauseCore(rightWords.slice(1, 8))) {
 		return { strong: true, reason: "subordinate-clause" };
