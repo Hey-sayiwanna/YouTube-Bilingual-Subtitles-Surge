@@ -264,16 +264,18 @@ export function resegmentYouTubeASRByParagraphTiming(body, options = {}) {
 	const {
 		softWidth = 52,
 		hardWidth = 64,
-		maximumGap = 280,
-		strongGap = 700,
+		minimumWidth = 24,
+		maximumGap = 320,
+		strongGap = 850,
 		maximumDuration = 6500,
+		minimumDuration = 900,
 	} = options;
 	const timedTextBody = body?.timedtext?.body;
-	if (!timedTextBody) return { applied: false, reason: "no-body", input: 0, visible: 0, output: 0, removedEmpty: 0, merged: 0 };
+	if (!timedTextBody) return { applied: false, reason: "no-body", input: 0, visible: 0, output: 0, removedEmpty: 0, merged: 0, split: 0, tokens: 0 };
 
 	let paragraphs = timedTextBody.p;
 	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
-	const stream = [];
+	const visible = [];
 	let removedEmpty = 0;
 
 	for (const paragraph of paragraphs) {
@@ -286,104 +288,243 @@ export function resegmentYouTubeASRByParagraphTiming(body, options = {}) {
 			continue;
 		}
 		if (!Number.isFinite(start)) continue;
-		stream.push({
-			paragraph,
-			parsed,
-			text,
-			start,
-			duration: Number.isFinite(duration) ? duration : undefined,
-			end: Number.isFinite(duration) ? start + duration : undefined,
+		visible.push({ paragraph, parsed, text, start, duration: Number.isFinite(duration) ? duration : undefined });
+	}
+
+	if (!visible.length) {
+		return { applied: false, reason: "no-visible-paragraphs", input: paragraphs.length, visible: 0, output: paragraphs.length, removedEmpty, merged: 0, split: 0, tokens: 0 };
+	}
+
+	for (let index = 0; index < visible.length; index += 1) {
+		const item = visible[index];
+		const nextStart = visible[index + 1]?.start;
+		let itemEnd = Number.isFinite(item.duration) ? item.start + item.duration : item.start + 2500;
+		if (Number.isFinite(nextStart) && nextStart > item.start) itemEnd = Math.min(itemEnd, nextStart);
+		if (!Number.isFinite(itemEnd) || itemEnd <= item.start) itemEnd = item.start + 1;
+		item.end = itemEnd;
+		item.width = measureYouTubeCaptionWidth(item.text);
+	}
+
+	const units = [];
+	for (let paragraphIndex = 0; paragraphIndex < visible.length; paragraphIndex += 1) {
+		const item = visible[paragraphIndex];
+		if (isYouTubeASRNonSpeechCue(item.text)) {
+			units.push({
+				text: item.text,
+				start: item.start,
+				end: item.end,
+				template: item.paragraph,
+				segmented: item.parsed.segmented,
+				paragraphIndex,
+				paragraphEnd: true,
+				paragraphWidth: item.width,
+				paragraphTokenCount: 1,
+				event: true,
+			});
+			continue;
+		}
+
+		const tokens = tokenizeYouTubeASRParagraph(item.text, hardWidth);
+		if (!tokens.length) continue;
+		const weights = tokens.map(token => Math.max(1, measureYouTubeCaptionWidth(token)));
+		const totalWeight = weights.reduce((sum, width) => sum + width, 0);
+		const duration = Math.max(1, item.end - item.start);
+		let consumedWeight = 0;
+
+		tokens.forEach((token, tokenIndex) => {
+			const relativeStart = Math.floor(duration * consumedWeight / totalWeight);
+			consumedWeight += weights[tokenIndex];
+			const relativeEnd = tokenIndex === tokens.length - 1 ? duration : Math.floor(duration * consumedWeight / totalWeight);
+			const tokenStart = item.start + relativeStart;
+			let tokenEnd = item.start + relativeEnd;
+			if (tokenEnd <= tokenStart) tokenEnd = Math.min(item.end, tokenStart + 1);
+			if (tokenEnd <= tokenStart) tokenEnd = tokenStart + 1;
+			units.push({
+				text: token,
+				start: tokenStart,
+				end: tokenEnd,
+				template: item.paragraph,
+				segmented: item.parsed.segmented,
+				paragraphIndex,
+				paragraphEnd: tokenIndex === tokens.length - 1,
+				paragraphWidth: item.width,
+				paragraphTokenCount: tokens.length,
+				event: false,
+			});
 		});
 	}
 
-	if (stream.length < 2) {
-		return { applied: false, reason: "insufficient-visible-paragraphs", input: paragraphs.length, visible: stream.length, output: paragraphs.length, removedEmpty, merged: 0 };
+	if (!units.length) {
+		return { applied: false, reason: "no-tokens", input: paragraphs.length, visible: visible.length, output: paragraphs.length, removedEmpty, merged: 0, split: 0, tokens: 0 };
 	}
 
 	const groups = [];
-	let index = 0;
-	while (index < stream.length) {
-		const first = stream[index];
-		let text = "";
-		let bestEnd = index;
-		let bestScore = Number.NEGATIVE_INFINITY;
-		let lastAllowed = index;
+	let region = [];
+	const flushRegion = () => {
+		if (!region.length) return;
+		groups.push(...partitionYouTubeASREstimatedTokens(region, { softWidth, hardWidth, minimumWidth, maximumGap, maximumDuration, minimumDuration }));
+		region = [];
+	};
 
-		for (let cursor = index; cursor < stream.length; cursor += 1) {
-			const item = stream[cursor];
-			if (cursor > index) {
-				const previous = stream[cursor - 1];
-				const gap = Number.isFinite(previous.end) ? item.start - previous.end : item.start - previous.start;
-				if (gap > strongGap || gap < -120) break;
-			}
-			const candidate = joinYouTubeCaptionFragments(text, item.text).trim();
-			const width = measureYouTubeCaptionWidth(candidate);
-			const next = stream[cursor + 1];
-			const duration = (Number.isFinite(item.end) ? item.end : item.start) - first.start;
-			const nextGap = next ? (Number.isFinite(item.end) ? next.start - item.end : next.start - item.start) : Number.POSITIVE_INFINITY;
-			const strongPunctuation = /[.!?。！？…]["'’”)]*$/u.test(candidate);
-			const weakPunctuation = /[,;:，；：]["'’”)]*$/u.test(candidate);
-			const shortFragment = countCaptionWords(item.text) <= 2 && measureYouTubeCaptionWidth(item.text) <= 14;
-			let score = -Math.abs(width - softWidth);
-			if (strongPunctuation) score += 120;
-			else if (weakPunctuation) score += 24;
-			if (nextGap > maximumGap) score += 90;
-			if (width >= 34 && width <= hardWidth) score += 18;
-			if (shortFragment && cursor === index) score -= 45;
-			if (shortFragment && cursor > index) score += 16;
-			if (duration >= 1500 && duration <= 5200) score += 8;
-
-			if (width <= hardWidth && duration <= maximumDuration) {
-				text = candidate;
-				lastAllowed = cursor;
-				if (score > bestScore) {
-					bestScore = score;
-					bestEnd = cursor;
-				}
-				if (strongPunctuation && width >= 18) break;
-				if (nextGap > maximumGap && width >= 18) break;
-				continue;
-			}
-			break;
+	for (const unit of units) {
+		if (unit.event) {
+			flushRegion();
+			groups.push([unit]);
+			continue;
 		}
-
-		if (bestEnd < index || bestEnd > lastAllowed) bestEnd = lastAllowed;
-		const items = stream.slice(index, bestEnd + 1);
-		let groupText = "";
-		for (const item of items) groupText = joinYouTubeCaptionFragments(groupText, item.text);
-		const last = items.at(-1);
-		groups.push({
-			start: first.start,
-			end: Number.isFinite(last?.end) ? last.end : last?.start + 2000,
-			text: groupText.trim(),
-			template: first.paragraph,
-			segmented: items.some(item => item.parsed.segmented),
-		});
-		index = bestEnd + 1;
+		const previous = region.at(-1);
+		if (previous && unit.start - previous.end > strongGap) flushRegion();
+		region.push(unit);
 	}
+	flushRegion();
 
 	const output = groups.map((group, groupIndex) => {
-		const cue = { ...group.template };
-		const nextStart = groups[groupIndex + 1]?.start;
-		const end = Number.isFinite(nextStart) && nextStart > group.start ? Math.min(group.end, nextStart) : group.end;
-		cue["@t"] = String(group.start);
-		cue["@d"] = String(Math.max(1, end - group.start));
+		const first = group[0];
+		const last = group.at(-1);
+		let text = "";
+		for (const unit of group) text = joinYouTubeCaptionFragments(text, unit.text);
+		const cue = { ...first.template };
+		const nextStart = groups[groupIndex + 1]?.[0]?.start;
+		let cueEnd = last.end;
+		if (Number.isFinite(nextStart) && nextStart > first.start) cueEnd = Math.min(cueEnd, nextStart);
+		cue["@t"] = String(first.start);
+		cue["@d"] = String(Math.max(1, cueEnd - first.start));
 		delete cue["@w"];
 		delete cue["@a"];
-		setYouTubeTimedTextParagraphText(cue, group.text, group.segmented);
+		setYouTubeTimedTextParagraphText(cue, text.trim(), group.some(unit => unit.segmented));
 		return cue;
 	});
 
 	timedTextBody.p = output;
 	return {
-		applied: true,
-		reason: "paragraph-timing",
+		applied: output.length > 0,
+		reason: "estimated-token-timing",
 		input: paragraphs.length,
-		visible: stream.length,
+		visible: visible.length,
 		output: output.length,
 		removedEmpty,
-		merged: Math.max(0, stream.length - output.length),
+		merged: Math.max(0, visible.length - output.length),
+		split: Math.max(0, output.length - visible.length),
+		tokens: units.length,
 	};
+}
+
+function tokenizeYouTubeASRParagraph(text, hardWidth) {
+	const rawTokens = normalizeText(text).trim().match(/\S+/gu) ?? [];
+	const tokens = [];
+	for (const token of rawTokens) {
+		if (measureYouTubeCaptionWidth(token) <= hardWidth) {
+			tokens.push(token);
+			continue;
+		}
+		let chunk = "";
+		for (const character of Array.from(token)) {
+			const candidate = chunk + character;
+			if (chunk && measureYouTubeCaptionWidth(candidate) > hardWidth) {
+				tokens.push(chunk);
+				chunk = character;
+			} else chunk = candidate;
+		}
+		if (chunk) tokens.push(chunk);
+	}
+	return tokens;
+}
+
+function partitionYouTubeASREstimatedTokens(units, options) {
+	const { softWidth, hardWidth, minimumWidth, maximumGap, maximumDuration, minimumDuration } = options;
+	const length = units.length;
+	if (!length) return [];
+
+	const costs = new Array(length + 1).fill(Number.POSITIVE_INFINITY);
+	const nextIndexes = new Array(length).fill(-1);
+	costs[length] = 0;
+
+	for (let start = length - 1; start >= 0; start -= 1) {
+		let text = "";
+		for (let end = start; end < length; end += 1) {
+			text = joinYouTubeCaptionFragments(text, units[end].text).trim();
+			const width = measureYouTubeCaptionWidth(text);
+			const duration = units[end].end - units[start].start;
+			if ((width > hardWidth || duration > maximumDuration) && end > start) break;
+			if (width > hardWidth || duration <= 0) continue;
+
+			const terminal = end === length - 1;
+			const gapAfter = terminal ? Number.POSITIVE_INFINITY : units[end + 1].start - units[end].end;
+			const boundaryAtParagraphEnd = units[end].paragraphEnd;
+			const nextParagraphIsOrphan =
+				boundaryAtParagraphEnd &&
+				!terminal &&
+				units[end + 1].paragraphIndex !== units[end].paragraphIndex &&
+				(units[end + 1].paragraphWidth <= 16 || units[end + 1].paragraphTokenCount <= 2);
+			const cueCost = scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, {
+				softWidth,
+				minimumWidth,
+				maximumGap,
+				minimumDuration,
+				terminal,
+				boundaryAtParagraphEnd,
+				nextParagraphIsOrphan,
+			});
+			const totalCost = cueCost + costs[end + 1];
+			if (totalCost < costs[start]) {
+				costs[start] = totalCost;
+				nextIndexes[start] = end + 1;
+			}
+		}
+		if (nextIndexes[start] < 0) {
+			nextIndexes[start] = start + 1;
+			costs[start] = 10000 + costs[start + 1];
+		}
+	}
+
+	const groups = [];
+	let index = 0;
+	while (index < length) {
+		const nextIndex = Math.max(index + 1, nextIndexes[index]);
+		groups.push(units.slice(index, nextIndex));
+		index = nextIndex;
+	}
+	return groups;
+}
+
+function scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, options) {
+	const { softWidth, minimumWidth, maximumGap, minimumDuration, terminal, boundaryAtParagraphEnd, nextParagraphIsOrphan } = options;
+	let cost = Math.abs(width - softWidth) * 1.25;
+	const strongPunctuation = /[.!?。！？…]["'’”)]*$/u.test(text);
+	const weakPunctuation = /[,;:，；：]["'’”)]*$/u.test(text);
+
+	if (width < minimumWidth) {
+		const deficit = minimumWidth - width;
+		cost += deficit * (terminal ? 3 : 6) + (terminal ? 15 : 45);
+	}
+	if (duration < minimumDuration) cost += (minimumDuration - duration) / 30;
+	if (duration > 5200) cost += (duration - 5200) / 90;
+	if (strongPunctuation) cost -= 95;
+	else if (weakPunctuation) cost -= 18;
+	if (gapAfter > maximumGap) cost -= 60;
+	if (boundaryAtParagraphEnd) cost -= 25;
+	if (nextParagraphIsOrphan) cost += 85;
+	if (endsYouTubeASRContinuationWord(text)) cost += 70;
+	if (terminal) cost -= 4;
+	return cost;
+}
+
+function endsYouTubeASRContinuationWord(text) {
+	const words = normalizeText(text).toLowerCase().match(/[a-z]+(?:['’][a-z]+)?/gu) ?? [];
+	const last = words.at(-1);
+	if (!last) return false;
+	return new Set([
+		"a", "an", "the",
+		"and", "or", "but", "so", "because", "if", "when", "while", "although", "though", "than",
+		"of", "to", "for", "with", "from", "at", "on", "in", "by", "into", "over", "under", "between", "through", "about", "around", "after", "before", "without",
+		"my", "your", "his", "her", "its", "our", "their", "this", "that", "these", "those", "who", "which",
+		"i", "you", "he", "she", "we", "they",
+	]).has(last);
+}
+
+function isYouTubeASRNonSpeechCue(text) {
+	text = normalizeText(text).trim();
+	return /^\[[^\]\r\n]{1,80}\]$/u.test(text) || /^[♪♫♬]+[\s\S]*[♪♫♬]+$/u.test(text);
 }
 
 export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
