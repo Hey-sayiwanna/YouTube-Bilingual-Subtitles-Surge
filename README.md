@@ -23,6 +23,11 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ## 更新日志
 
+### 2026-10-07
+
+- **v28**：在 v27 稳定翻译调度基础上，仅对显示宽度超过 70、且句子内部存在 `. ? ! …` 等强句界的普通官方字幕进行保守二次拆分；拆分后的两个 cue 按文字宽度比例分配原时间。没有内部强句界的完整长句保持原样，自动字幕与广播字幕逻辑不变。
+- **v27**：修复 v26 超长官方字幕拆批后并发请求过多、Surge 内部翻译请求容易超时的问题。普通官方字幕翻译批次改为最多 2 路并发，并将 Google Translate 单次请求超时明确提高到 15 秒；保留原重试机制。
+
 ### 2026-10-04
 
 - **v26**：仅在普通官方字幕原有 120 行批次的 `q` 编码长度超过 6000 时，将该批次按约 2400 的编码长度拆小。
@@ -68,7 +73,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 | `src/function/youtubeTimedText.mjs` | 自动字幕两行显示与长句处理 |
 | `request.youtube-standalone-v18.bundle.js` | YouTube Player 请求脚本 |
 | `response.youtube-standalone-v18.bundle.js` | YouTube Player / GetWatch 响应脚本 |
-| `Translate.response.youtube-fix-v26.bundle.js` | 从本仓库源码构建的字幕响应脚本 |
+| `Translate.response.youtube-fix-v28.bundle.js` | 当前 v28 字幕响应脚本（包含 v27 翻译稳定性修复与 v28 官方长句保守拆分） |
 | `tests/` | 自动字幕、官方字幕和模块独立性测试 |
 
 ## 开源说明
