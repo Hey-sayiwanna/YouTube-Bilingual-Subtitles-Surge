@@ -522,7 +522,7 @@ function scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, options) {
 	else if (weakPunctuation) cost -= 18;
 	if (gapAfter > maximumGap) cost -= 60;
 	if (boundaryAtParagraphEnd) cost -= 25;
-	if (nextParagraphIsOrphan) cost += 85;
+	if (nextParagraphIsOrphan && !strongPunctuation) cost += 85;
 	if (endsYouTubeASRContinuationWord(text)) cost += 70;
 	if (terminal) cost -= 4;
 	return cost;
