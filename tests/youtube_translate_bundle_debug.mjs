@@ -62,7 +62,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v34.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../Translate.response.youtube-fix-v35.bundle.js?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
@@ -83,9 +83,9 @@ const automatic = await runBundle({
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "34");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "35");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "punctuation-grammar-v34");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "semantic-asr-v35");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
 assert.equal(automaticBody.w, undefined);
 assert.ok(automaticBody.p.every(paragraph => paragraph["@w"] === undefined && paragraph["@a"] === undefined));
@@ -96,24 +96,24 @@ assert.match(automatic.output.body, /두 번째 문장&#x000A;第二句/);
 const ufcParagraphTimed = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=ufc-real&caps=asr&lang=en&format=srv3&subtype=Translate",
 	translation: rows => rows.map((row, index) => `UFC译文${index + 1}`).join("\r"),
-	testName: "v34-ufc-paragraph-timing",
+	testName: "v35-ufc-paragraph-timing",
 	body: ufcParagraphTimedSrv3,
 });
 const ufcBody = XML.parse(ufcParagraphTimed.output.body).timedtext.body;
-assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "punctuation-grammar-v34");
-assert.ok(ufcBody.p.length < 6, "v34 must remove empty display events and merge continuous ASR fragments");
+assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "semantic-asr-v35");
+assert.ok(ufcBody.p.length < 6, "v35 must remove empty display events and merge continuous ASR fragments");
 assert.match(ufcParagraphTimed.output.body, /instead of waiting for khabib to come at him&#x000A;UFC译文1/, "orphan 'him' must be translated together with 'come at'");
-assert.doesNotMatch(ufcParagraphTimed.output.body, /<s>him&#x000A;/, "v34 must not leave 'him' as a standalone translated cue");
+assert.doesNotMatch(ufcParagraphTimed.output.body, /<s>him&#x000A;/, "v35 must not leave 'him' as a standalone translated cue");
 for (let index = 0; index < ufcBody.p.length - 1; index += 1) {
 	const currentEnd = Number(ufcBody.p[index]["@t"]) + Number(ufcBody.p[index]["@d"] ?? 0);
 	const nextStart = Number(ufcBody.p[index + 1]["@t"]);
-	assert.ok(currentEnd <= nextStart, `v34 UFC cue ${index} overlaps cue ${index + 1}`);
+	assert.ok(currentEnd <= nextStart, `v35 UFC cue ${index} overlaps cue ${index + 1}`);
 }
 
 const northKoreaParagraphTimed = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=north-korea&caps=asr&lang=en&format=srv3&subtype=Translate",
 	translation: rows => rows.map((_, index) => `NK译文${index + 1}`).join("\r"),
-	testName: "v34-north-korea-estimated-token-timing",
+	testName: "v35-north-korea-estimated-token-timing",
 	body: northKoreaParagraphTimedSrv3,
 });
 const northBody = XML.parse(northKoreaParagraphTimed.output.body).timedtext.body;
@@ -122,13 +122,13 @@ const northOrigins = northParagraphs.map(paragraph => {
 	const text = paragraph?.s?.["#"] ?? paragraph?.["#"] ?? "";
 	return String(text).split("\n")[0];
 });
-assert.ok(northOrigins.includes("This is everything that happened at the North Korean border."), "v34 should move the sentence tail across the original p boundary");
-assert.ok(northOrigins.includes("First, I took a boat and crossed into the North Korean border."), "v34 should rebuild the next complete sentence across multiple p nodes");
-assert.ok(northParagraphs.every(paragraph => Number(paragraph["@d"] ?? 0) > 0), "v34 rebuilt cues must keep positive duration");
+assert.ok(northOrigins.includes("This is everything that happened at the North Korean border."), "v35 should move the sentence tail across the original p boundary");
+assert.ok(northOrigins.includes("First, I took a boat and crossed into the North Korean border."), "v35 should rebuild the next complete sentence across multiple p nodes");
+assert.ok(northParagraphs.every(paragraph => Number(paragraph["@d"] ?? 0) > 0), "v35 rebuilt cues must keep positive duration");
 for (let index = 0; index < northParagraphs.length - 1; index += 1) {
 	const currentEnd = Number(northParagraphs[index]["@t"]) + Number(northParagraphs[index]["@d"] ?? 0);
 	const nextStart = Number(northParagraphs[index + 1]["@t"]);
-	assert.ok(currentEnd <= nextStart, `v34 North Korea cue ${index} overlaps cue ${index + 1}`);
+	assert.ok(currentEnd <= nextStart, `v35 North Korea cue ${index} overlaps cue ${index + 1}`);
 }
 
 const longAutomatic = await runBundle({
@@ -140,9 +140,9 @@ const longAutomatic = await runBundle({
 const longParagraphs = XML.parse(longAutomatic.output.body).timedtext.body.p;
 const longOrigins = longParagraphs.map(paragraph => String(paragraph?.s?.["#"] ?? paragraph?.["#"] ?? "").split("\n")[0]);
 assert.ok(longParagraphs.length >= 3);
-assert.ok(longOrigins.every(text => Array.from(text).length <= 64), "v34 long ASR cues must stay inside the hard display limit");
-assert.ok(longOrigins.some(text => text.endsWith("before it overlaps.")), "v34 must preserve the strong sentence boundary");
-assert.equal(longOrigins.at(-1), "Next caption.", "v34 must not absorb a new sentence merely because it is short");
+assert.ok(longOrigins.every(text => Array.from(text).length <= 64), "v35 long ASR cues must stay inside the hard display limit");
+assert.ok(longOrigins.some(text => text.endsWith("before it overlaps.")), "v35 must preserve the strong sentence boundary");
+assert.equal(longOrigins.at(-1), "Next caption.", "v35 must not absorb a new sentence merely because it is short");
 for (let index = 0; index < longParagraphs.length - 1; index += 1) {
 	const currentEnd = Number(longParagraphs[index]["@t"]) + Number(longParagraphs[index]["@d"] ?? 0);
 	const nextStart = Number(longParagraphs[index + 1]["@t"]);
@@ -156,7 +156,7 @@ const official = await runBundle({
 	body: plainOfficialSrv3,
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "34");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "35");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Broadcast-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "official");
