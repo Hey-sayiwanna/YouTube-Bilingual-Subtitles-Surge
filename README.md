@@ -91,4 +91,4 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ## 开源说明
 
-本项目保留并注明所使用上游开源逻辑的许可与来源，运行文件和订阅路径均由本仓库独立托管。
+本项目保留并注明所使用上游开源逻辑的许可与来源，详情见THIRD_PARTY_NOTICES.md，运行文件和订阅路径均由本仓库独立托管。
