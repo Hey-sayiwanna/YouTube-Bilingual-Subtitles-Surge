@@ -707,6 +707,9 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 			reason: "coordinated-clause",
 		};
 	}
+	if (rightFirst === "and" || rightFirst === "or") {
+		return { level: "continue", reason: "coordinated-phrase" };
+	}
 
 	const rightHasClauseCore = hasYouTubeASRClauseCore(rightWords.slice(0, 9));
 	if (rightHasClauseCore && isYouTubeASRPersonalSubject(rightFirst) && currentWidth >= 28) {
