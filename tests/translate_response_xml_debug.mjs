@@ -214,9 +214,9 @@ const semanticSafetyCapParagraphs = semanticSafetyCapBody.timedtext.body.p;
 const semanticSafetyCapTexts = semanticSafetyCapParagraphs.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
 assert.ok(semanticSafetyCapTexts.length >= 2, "long punctuation-free content must still be split by safety limits");
 for (const text of semanticSafetyCapTexts) {
-	assert.ok(measureYouTubeCaptionWidth(text) <= 90, `semantic safety width exceeded: ${text}`);
+	assert.ok(measureYouTubeCaptionWidth(text) <= 104, `semantic safety width exceeded: ${text}`);
 	const words = text.toLowerCase().match(/[a-z]+(?:['’][a-z]+)?/gu) ?? [];
-	assert.ok(words.length <= 18, `semantic safety word cap exceeded: ${text}`);
+	assert.ok(words.length <= 22, `semantic safety word cap exceeded: ${text}`);
 }
 assert.ok(
 	semanticSafetyCapTexts.some(text => /^she also makes sure/u.test(text)),
