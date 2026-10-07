@@ -624,9 +624,18 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 	const leftLast = leftWords.at(-1);
 	const leftPenultimate = leftWords.at(-2) ?? "";
 	const rightFirst = rightWords[0];
+	const dependentTail = getYouTubeASRDependentClauseTail(leftWords);
 
 	if (isYouTubeASRHardContinuation(leftLast, leftPenultimate)) {
 		return { level: "forbid", reason: "left-incomplete" };
+	}
+
+	// A newly opened subordinate/relative clause must be allowed to establish
+	// its own subject-predicate span before any internal boundary is considered.
+	// This protects structures such as "because the pipes | freeze" and
+	// "when the temperature | drops" without naming the predicate itself.
+	if (dependentTail && dependentTail.length <= 3) {
+		return { level: "forbid", reason: "open-dependent-clause" };
 	}
 
 	if (
@@ -717,6 +726,16 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		return { level: "optional", reason: "independent-clause" };
 	}
 
+	return null;
+}
+
+function getYouTubeASRDependentClauseTail(words) {
+	for (let index = words.length - 1; index >= 0; index -= 1) {
+		const word = words[index];
+		if (isYouTubeASRSubordinator(word) || isYouTubeASRRelativeMarker(word)) {
+			return words.slice(index + 1);
+		}
+	}
 	return null;
 }
 
