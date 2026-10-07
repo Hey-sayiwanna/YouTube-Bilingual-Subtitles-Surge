@@ -796,7 +796,11 @@ function hasYouTubeASRClauseCore(words) {
 		return hasYouTubeASRNominalSubjectPredicate(words);
 	}
 
-	return hasYouTubeASRFinitePredicate(words, 1, 4) || looksLikeYouTubeASRBarePredicate(words, 1);
+	// Generic content-word starts are intentionally conservative: a new
+	// clause must expose a predicate immediately after its subject. Do not scan
+	// farther ahead for verb-like suffixes, which turns phrases such as
+	// "below minus 55 degrees" into invented clauses.
+	return looksLikeYouTubeASRBarePredicate(words, 1);
 }
 
 function hasYouTubeASRNominalSubjectPredicate(words) {
