@@ -75,14 +75,13 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 | `force_translate_request.js` | 为 YouTube 字幕请求启用简中翻译 |
 | `src/YouTube.Translate.response.js` | 当前字幕翻译与双语写回源码 |
 | `src/function/youtubeTimedText.mjs` | 自动字幕重组、两行显示、长句与时间处理 |
-| `request.youtube-standalone-v18.bundle.js` | 当前仍在使用的 YouTube Player 请求脚本，文件名虽为 v18 但不能删除 |
-| `response.youtube-standalone-v18.bundle.js` | 当前仍在使用的 YouTube Player / GetWatch 响应脚本，文件名虽为 v18 但不能删除 |
+| `request.youtube-standalone-v18.bundle.js` | 当前仍在使用的 YouTube Player 请求脚本 |
+| `response.youtube-standalone-v18.bundle.js` | 当前仍在使用的 YouTube Player / GetWatch 响应脚本|
 | `Translate.response.youtube-fix-v24.bundle.js` ～ `v28.bundle.js` | 保留给仍在使用旧模块的用户做兼容 |
 | `Translate.response.youtube-fix-v39-en.bundle.js` | 当前英文字幕脚本（含英文模型） |
 | `Translate.response.youtube-fix-v39-cjk.bundle.js` | 当前日语、韩语字幕脚本（含日韩模型） |
 | `Translate.response.youtube-fix-v39-other.bundle.js` | 当前其他语言字幕脚本（无模型，通用标准） |
 | `src/function/asrCore.mjs` | 断句框架：取词、动态规划、时间轴、语言识别，以及通用标准 |
-| `src/function/asrModelJa.mjs` / `asrModelKo.mjs` | 自动生成的日语/韩语断句模型 |
 | `src/function/asrSegmenter.mjs` | 载入全部模型的便捷入口，仅供测试和工具使用 |
 | `src/function/asrBoundaryModel.mjs` | 自动生成的标点模型权重，不要手改 |
 | `tools/` | 模型训练、调参脚本（英文在根目录，日韩在 `tools/cjk/`） |
