@@ -717,10 +717,8 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 	}
 
 	if (
-		rightHasClauseCore &&
 		currentWidth >= 28 &&
-		!isYouTubeASRFunctionWord(rightFirst) &&
-		!isYouTubeASRAuxiliary(rightFirst)
+		looksLikeYouTubeASRContentSubjectClause(rightWords.slice(0, 9))
 	) {
 		return { level: "strong", reason: "content-subject-clause" };
 	}
@@ -748,6 +746,26 @@ function getYouTubeASRDependentClauseTail(words) {
 
 function isYouTubeASRDiscourseClauseOpener(word) {
 	return new Set(["but", "so", "then"]).has(word);
+}
+
+function looksLikeYouTubeASRContentSubjectClause(words) {
+	if (words.length < 2) return false;
+	const subject = words[0];
+	if (
+		!subject ||
+		isYouTubeASRFunctionWord(subject) ||
+		isYouTubeASRAuxiliary(subject) ||
+		isYouTubeASRPersonalSubject(subject)
+	) return false;
+
+	const predicate = words[1];
+	if (!predicate) return false;
+
+	// Require the predicate to appear immediately after the content-word subject.
+	// This handles "khabib got a hold", "children go to school",
+	// "temperature drops below..." without scanning deep into later words.
+	if (isYouTubeASRAuxiliary(predicate)) return true;
+	return looksLikeYouTubeASRBarePredicate(words, 1);
 }
 
 function countYouTubeASRWords(text) {
