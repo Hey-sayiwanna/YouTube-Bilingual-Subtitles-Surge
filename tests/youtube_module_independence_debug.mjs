@@ -30,7 +30,7 @@ const translateBundle = await readFile("Translate.response.youtube-fix-v36.bundl
 assert.match(translateBundle, /Hey-sayiwanna YouTube Translate FIX 36 active/);
 assert.match(translateBundle, /YouTube standalone settings active; BoxJs bypassed/);
 assert.match(translateBundle, /YouTube Chinese source detected; translation bypassed/);
-assert.match(translateBundle, /YouTube ASR v36 semantic-asr rebuild/);
+assert.match(translateBundle, /YouTube ASR v36 unified-semantic-asr rebuild/);
 assert.match(translateBundle, /YouTube ASR fixed two-line mode/);
 assert.match(translateBundle, /YouTube ASR translation batches/);
 assert.match(translateBundle, /YouTube official translation batches/);
