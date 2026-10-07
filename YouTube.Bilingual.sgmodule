@@ -1,5 +1,5 @@
 #!name=YouTube 自动简中双语字幕 v35
-#!desc=v35 无标点自动字幕改为语义块重构：语法完整优先，长度仅作安全阀；保留90字符/18词/7.8秒硬上限
+#!desc=v35 无标点自动字幕改为语义块重构：语法完整优先，长度仅作安全阀；保留104字符/22词/9秒硬上限
 #!author=Hey-sayiwanna
 #!homepage=https://github.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge
 #!icon=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/src/assets/icon_rounded.png
