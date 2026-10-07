@@ -542,6 +542,24 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 			}
 
 
+			if (/road stays open during winter|when the temperature|drops below minus/i.test(text)) {
+				const nextTextDebug = terminal ? "" : joinYouTubeCaptionFragments(text, units[end + 1].text).trim();
+				console.log("[V35-BOUNDARY-DEBUG2]", JSON.stringify({
+					start,
+					end,
+					text,
+					width,
+					wordCount,
+					duration,
+					next: terminal ? null : units[end + 1]?.text,
+					nextWidth: terminal ? null : measureYouTubeCaptionWidth(nextTextDebug),
+					nextWords: terminal ? null : countYouTubeASRWords(nextTextDebug),
+					nextDuration: terminal ? null : units[end + 1].end - units[start].start,
+					gapAfter,
+					grammarBoundary,
+				}));
+			}
+
 			const cueCost = scoreYouTubeASREstimatedCue(text, width, wordCount, duration, gapAfter, {
 				softWidth,
 				softWords,
