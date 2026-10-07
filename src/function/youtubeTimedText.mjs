@@ -262,13 +262,15 @@ function splitOfficialCaptionAtStrongSentenceBoundary(text, minimumWidth) {
  */
 export function resegmentYouTubeASRByParagraphTiming(body, options = {}) {
 	const {
-		softWidth = 52,
-		hardWidth = 64,
-		minimumWidth = 24,
-		maximumGap = 320,
-		strongGap = 850,
-		maximumDuration = 6500,
-		minimumDuration = 900,
+		softWidth = 68,
+		hardWidth = 90,
+		softWords = 13,
+		hardWords = 18,
+		minimumWidth = 28,
+		maximumGap = 360,
+		strongGap = 900,
+		maximumDuration = 7800,
+		minimumDuration = 1000,
 	} = options;
 	const timedTextBody = body?.timedtext?.body;
 	if (!timedTextBody) return { applied: false, reason: "no-body", input: 0, visible: 0, output: 0, removedEmpty: 0, merged: 0, split: 0, tokens: 0 };
@@ -368,7 +370,7 @@ export function resegmentYouTubeASRByParagraphTiming(body, options = {}) {
 	let region = [];
 	const flushRegion = () => {
 		if (!region.length) return;
-		groups.push(...partitionYouTubeASREstimatedTokens(region, { softWidth, hardWidth, minimumWidth, maximumGap, maximumDuration, minimumDuration }));
+		groups.push(...partitionYouTubeASREstimatedTokens(region, { softWidth, hardWidth, softWords, hardWords, minimumWidth, maximumGap, maximumDuration, minimumDuration }));
 		region = [];
 	};
 
@@ -474,7 +476,7 @@ function partitionYouTubeASREstimatedTokens(units, options) {
 }
 
 function partitionYouTubeASRGrammarRegion(units, options) {
-	const { softWidth, hardWidth, minimumWidth, maximumGap, maximumDuration, minimumDuration } = options;
+	const { softWidth, hardWidth, softWords, hardWords, minimumWidth, maximumGap, maximumDuration, minimumDuration } = options;
 	const length = units.length;
 	if (!length) return [];
 
@@ -487,9 +489,14 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 		for (let end = start; end < length; end += 1) {
 			text = joinYouTubeCaptionFragments(text, units[end].text).trim();
 			const width = measureYouTubeCaptionWidth(text);
+			const wordCount = countYouTubeASRWords(text);
 			const duration = units[end].end - units[start].start;
-			if ((width > hardWidth || duration > maximumDuration) && end > start) break;
-			if (width > hardWidth || duration <= 0) continue;
+			const exceedsHardLimit =
+				width > hardWidth ||
+				wordCount > hardWords ||
+				duration > maximumDuration;
+			if (exceedsHardLimit && end > start) break;
+			if (exceedsHardLimit || duration <= 0) continue;
 
 			const terminal = end === length - 1;
 			const gapAfter = terminal ? Number.POSITIVE_INFINITY : units[end + 1].start - units[end].end;
@@ -497,25 +504,46 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 			const weakPunctuationBoundary = /[,;:，；：]["'’”)]*$/u.test(text);
 			const grammarBoundary = terminal || strongPunctuationBoundary
 				? null
-				: scoreYouTubeASRGrammarBoundary(units, end + 1, text, width);
+				: scoreYouTubeASRGrammarBoundary(units, end + 1, text, width, { softWidth });
 
 			if (!terminal) {
 				const nextText = joinYouTubeCaptionFragments(text, units[end + 1].text).trim();
 				const nextWidth = measureYouTubeCaptionWidth(nextText);
+				const nextWordCount = countYouTubeASRWords(nextText);
 				const nextDuration = units[end + 1].end - units[start].start;
-				const canContinueSafely = nextWidth <= hardWidth && nextDuration <= maximumDuration;
-				const hasBoundaryEvidence =
-					strongPunctuationBoundary ||
-					weakPunctuationBoundary ||
-					gapAfter > maximumGap ||
-					grammarBoundary?.strong ||
-					grammarBoundary?.weak;
+				const canContinueSafely =
+					nextWidth <= hardWidth &&
+					nextWordCount <= hardWords &&
+					nextDuration <= maximumDuration;
+				const level = grammarBoundary?.level ?? "none";
 
-				if (canContinueSafely && (grammarBoundary?.forbid || !hasBoundaryEvidence)) continue;
+				// A syntactically broken boundary is never chosen while the cue can
+				// still grow inside all safety limits.
+				if (canContinueSafely && level === "forbid") continue;
+
+				// CONTINUE means the next phrase semantically belongs to this one
+				// (because/when/which/that clauses, short coordination, etc.).
+				// A real pause or explicit weak punctuation may still override it.
+				if (
+					canContinueSafely &&
+					level === "continue" &&
+					!weakPunctuationBoundary &&
+					gapAfter <= maximumGap
+				) continue;
+
+				// With no positive boundary evidence, keep accumulating context until
+				// a grammar boundary, pause, punctuation, or safety limit appears.
+				if (
+					canContinueSafely &&
+					level === "none" &&
+					!weakPunctuationBoundary &&
+					gapAfter <= maximumGap
+				) continue;
 			}
 
-			const cueCost = scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, {
+			const cueCost = scoreYouTubeASREstimatedCue(text, width, wordCount, duration, gapAfter, {
 				softWidth,
+				softWords,
 				minimumWidth,
 				maximumGap,
 				minimumDuration,
@@ -528,6 +556,9 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 				nextIndexes[start] = end + 1;
 			}
 		}
+
+		// Emergency fallback only. Token timing guarantees forward progress, but
+		// ordinary paths should always find a semantic/safety boundary first.
 		if (nextIndexes[start] < 0) {
 			nextIndexes[start] = start + 1;
 			costs[start] = 10000 + costs[start + 1];
@@ -544,58 +575,58 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 	return groups;
 }
 
-function scoreYouTubeASREstimatedCue(text, width, duration, gapAfter, options) {
-	const { softWidth, minimumWidth, maximumGap, minimumDuration, terminal, grammarBoundary } = options;
-	let cost = Math.abs(width - softWidth) * 1.05;
+function scoreYouTubeASREstimatedCue(text, width, wordCount, duration, gapAfter, options) {
+	const { softWidth, softWords, minimumWidth, maximumGap, minimumDuration, terminal, grammarBoundary } = options;
+
+	// Length is a preference, not the segmentation objective. Semantic evidence
+	// dominates; width/word count only keep blocks readable and reasonably dense.
+	let cost =
+		Math.abs(width - softWidth) * 0.32 +
+		Math.abs(wordCount - softWords) * 1.8;
 	const strongPunctuation = /[.!?。！？…]["'’”)]*$/u.test(text);
 	const weakPunctuation = /[,;:，；：]["'’”)]*$/u.test(text);
 
 	if (width < minimumWidth) {
 		const deficit = minimumWidth - width;
-		cost += deficit * (terminal ? 2.5 : 5) + (terminal ? 12 : 36);
+		cost += deficit * (terminal ? 2 : 4) + (terminal ? 8 : 28);
 	}
-	if (duration < minimumDuration) cost += (minimumDuration - duration) / 30;
-	if (duration > 5200) cost += (duration - 5200) / 90;
-	if (strongPunctuation) cost -= 180;
-	else if (weakPunctuation) cost -= 24;
-	if (gapAfter > maximumGap) cost -= 60;
+	if (duration < minimumDuration) cost += (minimumDuration - duration) / 35;
+	if (duration > 6500) cost += (duration - 6500) / 120;
+	if (strongPunctuation) cost -= 220;
+	else if (weakPunctuation) cost -= 18;
+	if (gapAfter > maximumGap) cost -= 55;
 
-	// Original YouTube <p> boundaries are timing containers only; they do not
-	// contribute to segmentation because ASR display chunks are frequently wrong.
-	// Grammar decides no-punctuation boundaries.
-	if (grammarBoundary?.forbid) cost += 220;
-	else if (grammarBoundary?.strong) cost -= 130;
-	else if (grammarBoundary?.weak) cost -= 58;
+	const level = grammarBoundary?.level;
+	if (level === "forbid") cost += 420;
+	else if (level === "continue") cost += 90;
+	else if (level === "optional") cost -= 34;
+	else if (level === "strong") cost -= 145;
 
-	if (endsYouTubeASRContinuationWord(text)) cost += 110;
+	if (endsYouTubeASRContinuationWord(text)) cost += 180;
 	if (terminal) cost -= 6;
 	return cost;
 }
 
-function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWidth) {
+function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWidth, options = {}) {
 	if (!Number.isFinite(nextIndex) || nextIndex < 0 || nextIndex >= units.length) return null;
 
 	const leftWords = extractYouTubeASRWords(currentText);
 	if (!leftWords.length) return null;
 
 	const rightWords = units
-		.slice(nextIndex, Math.min(units.length, nextIndex + 10))
+		.slice(nextIndex, Math.min(units.length, nextIndex + 12))
 		.flatMap(unit => extractYouTubeASRWords(unit.text));
 	if (!rightWords.length) return null;
 
+	const { softWidth = 68 } = options;
 	const leftLast = leftWords.at(-1);
 	const leftPenultimate = leftWords.at(-2) ?? "";
 	const rightFirst = rightWords[0];
-	const rightSecond = rightWords[1] ?? "";
 
-	// The left side is visibly unfinished.
 	if (isYouTubeASRHardContinuation(leftLast, leftPenultimate)) {
-		return { forbid: true, reason: "left-incomplete" };
+		return { level: "forbid", reason: "left-incomplete" };
 	}
 
-	// A determiner + noun phrase at the left edge often still needs a complement
-	// (for example "keep his family | warm"). Only allow the cut when the right
-	// side clearly starts a fresh clause.
 	if (
 		(isYouTubeASRPossessiveDeterminer(leftPenultimate) ||
 			isYouTubeASRArticle(leftPenultimate) ||
@@ -603,77 +634,96 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		!hasYouTubeASRClauseCore(rightWords.slice(0, 8)) &&
 		!isYouTubeASRSubordinator(rightFirst)
 	) {
-		return { forbid: true, reason: "left-open-nominal-phrase" };
+		return { level: "forbid", reason: "left-open-nominal-phrase" };
 	}
 
-	// Possessive/article/demonstrative may start a new sentence only when the
-	// opening noun phrase owns a predicate. Do not scan through a later subject
-	// ("a hold of his ankles he's ...") and borrow that later clause's predicate.
 	if (
 		isYouTubeASRPossessiveDeterminer(rightFirst) ||
 		isYouTubeASRArticle(rightFirst) ||
 		isYouTubeASRDemonstrative(rightFirst)
 	) {
 		return hasYouTubeASRNominalSubjectPredicate(rightWords)
-			? { weak: true, reason: "nominal-subject-clause" }
-			: { forbid: true, reason: "dependent-noun-phrase" };
+			? { level: "strong", reason: "nominal-subject-clause" }
+			: { level: "forbid", reason: "dependent-noun-phrase" };
 	}
 
-	// An auxiliary without its subject cannot start an independent cue.
 	if (isYouTubeASRAuxiliary(rightFirst)) {
-		return { forbid: true, reason: "orphan-auxiliary" };
+		return { level: "forbid", reason: "orphan-auxiliary" };
 	}
 
-	// Subordinate clauses are good boundaries only when they actually contain a clause.
-	if (isYouTubeASRSubordinator(rightFirst) && hasYouTubeASRClauseCore(rightWords.slice(1, 8))) {
-		return { strong: true, reason: "subordinate-clause" };
+	// Subordinate and relative clauses normally complete the current idea.
+	// They are not breaks by themselves; the hard safety limits can still force
+	// a later emergency boundary if the combined semantic unit becomes too long.
+	if (isYouTubeASRSubordinator(rightFirst) && hasYouTubeASRClauseCore(rightWords.slice(1, 9))) {
+		return { level: "continue", reason: "subordinate-continuation" };
+	}
+	if (isYouTubeASRRelativeMarker(rightFirst) && hasYouTubeASRClauseCore(rightWords.slice(1, 9))) {
+		return { level: "continue", reason: "relative-continuation" };
 	}
 
-	// A right-side dependent phrase should stay attached to the left clause.
 	if (new Set(["than", "as", "of", "for", "with", "from", "at", "on", "in", "by", "into", "over", "under", "between", "through"]).has(rightFirst)) {
-		return { forbid: true, reason: "right-dependent-phrase" };
+		return { level: "forbid", reason: "right-dependent-phrase" };
 	}
 
-	// "to ..." may start a natural infinitive phrase after a completed left phrase,
-	// but must stay attached after an auxiliary construction such as "will go | to school".
+	// Purpose infinitives are valid optional boundaries, but only after enough
+	// context has accumulated. Short left phrases keep the infinitive attached.
 	if (rightFirst === "to") {
 		if (isYouTubeASRAuxiliary(leftPenultimate) || isYouTubeASRAuxiliary(leftLast)) {
-			return { forbid: true, reason: "to-verb-complement" };
+			return { level: "forbid", reason: "to-verb-complement" };
 		}
-		if (currentWidth >= 30 && rightWords.length >= 4) {
-			return { weak: true, reason: "to-infinitive-phrase" };
+		if (currentWidth >= 38 && rightWords.length >= 4) {
+			return { level: "optional", reason: "to-purpose-phrase" };
 		}
-		return { forbid: true, reason: "short-to-phrase" };
+		return { level: "continue", reason: "short-to-phrase" };
 	}
 
-	if (rightFirst === "then" && hasYouTubeASRClauseCore(rightWords.slice(1, 8))) {
-		return { strong: true, reason: "then-clause" };
+	// Contrast/result coordinators can either stay with the previous complete
+	// thought or start a new one. Let block density and timing decide.
+	if (new Set(["but", "so", "then"]).has(rightFirst)) {
+		const clauseWords = rightWords.slice(1, 9);
+		const nestedSubordinate =
+			clauseWords.length > 1 &&
+			isYouTubeASRSubordinator(clauseWords[0]) &&
+			hasYouTubeASRClauseCore(clauseWords.slice(1, 8));
+		if (nestedSubordinate || hasYouTubeASRClauseCore(clauseWords)) {
+			return { level: currentWidth >= softWidth * 0.85 ? "strong" : "optional", reason: "contrast-or-result-clause" };
+		}
 	}
 
-	if (rightFirst === "and" && hasYouTubeASRClauseCore(rightWords.slice(1, 8)) && currentWidth >= 30) {
-		return { weak: true, reason: "coordinated-clause" };
+	if (rightFirst === "and" && hasYouTubeASRClauseCore(rightWords.slice(1, 9))) {
+		return {
+			level: currentWidth >= softWidth ? "optional" : "continue",
+			reason: "coordinated-clause",
+		};
 	}
 
-	// A fresh content-word subject followed by a predicate is a strong new-clause signal
-	// in punctuation-free ASR, e.g. "... come at him | khabib got a hold ...".
-	const rightHasClauseCore = hasYouTubeASRClauseCore(rightWords.slice(0, 8));
+	const rightHasClauseCore = hasYouTubeASRClauseCore(rightWords.slice(0, 9));
+	if (rightHasClauseCore && isYouTubeASRPersonalSubject(rightFirst) && currentWidth >= 28) {
+		return { level: "strong", reason: "fresh-pronoun-clause" };
+	}
+
 	if (
 		rightHasClauseCore &&
-		currentWidth >= 30 &&
-		!isYouTubeASRPersonalSubject(rightFirst) &&
+		currentWidth >= 28 &&
 		!isYouTubeASRFunctionWord(rightFirst) &&
 		!isYouTubeASRAuxiliary(rightFirst)
 	) {
-		return { strong: true, reason: "content-subject-clause" };
+		return { level: "strong", reason: "content-subject-clause" };
 	}
 
-	// Other complete subject-predicate sequences are still useful, but weaker,
-	// so ordinary embedded pronoun clauses are not over-split.
-	if (rightHasClauseCore && currentWidth >= 34) {
-		return { weak: true, reason: "independent-clause" };
+	if (rightHasClauseCore && currentWidth >= softWidth * 0.75) {
+		return { level: "optional", reason: "independent-clause" };
 	}
 
 	return null;
+}
+
+function countYouTubeASRWords(text) {
+	return extractYouTubeASRWords(text).length;
+}
+
+function isYouTubeASRRelativeMarker(word) {
+	return new Set(["who", "which", "whose", "whom", "that"]).has(word);
 }
 
 function isYouTubeASRAuxiliary(word) {
@@ -708,7 +758,7 @@ function isYouTubeASRFunctionWord(word) {
 		"this", "that", "these", "those",
 		"of", "for", "with", "from", "at", "on", "in", "by", "into", "over", "under", "between", "through", "about", "around", "without",
 		"and", "or", "but", "so", "because", "if", "when", "while", "although", "though", "unless", "since", "whereas",
-		"who", "which", "whose", "whom", "than", "as",
+		"who", "which", "whose", "whom", "that", "than", "as",
 	]).has(word);
 }
 
