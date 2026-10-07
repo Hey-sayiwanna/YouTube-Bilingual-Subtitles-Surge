@@ -732,11 +732,19 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 function getYouTubeASRDependentClauseTail(words) {
 	for (let index = words.length - 1; index >= 0; index -= 1) {
 		const word = words[index];
-		if (isYouTubeASRSubordinator(word) || isYouTubeASRRelativeMarker(word)) {
+		if (
+			isYouTubeASRSubordinator(word) ||
+			isYouTubeASRRelativeMarker(word) ||
+			isYouTubeASRDiscourseClauseOpener(word)
+		) {
 			return words.slice(index + 1);
 		}
 	}
 	return null;
+}
+
+function isYouTubeASRDiscourseClauseOpener(word) {
+	return new Set(["but", "so", "then"]).has(word);
 }
 
 function countYouTubeASRWords(text) {
