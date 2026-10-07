@@ -140,7 +140,18 @@ const longAutomatic = await runBundle({
 const longParagraphs = XML.parse(longAutomatic.output.body).timedtext.body.p;
 const longOrigins = longParagraphs.map(paragraph => String(paragraph?.s?.["#"] ?? paragraph?.["#"] ?? "").split("\n")[0]);
 assert.ok(longParagraphs.length >= 3);
-assert.ok(longOrigins.every(text => Array.from(text).length <= 64), "v35 long ASR cues must stay inside the hard display limit");
+assert.ok(longOrigins.every(text => Array.from(text).length <= 104), "v35 long ASR cues must stay inside the 104-character semantic safety limit");
+assert.ok(
+	longOrigins.every(text => (text.toLowerCase().match(/[a-z]+(?:['’][a-z]+)?/gu) ?? []).length <= 22),
+	"v35 long ASR cues must stay inside the 22-word semantic safety limit"
+);
+assert.ok(
+	longParagraphs.every(paragraph => {
+		const duration = Number(paragraph?.["@d"] ?? 0);
+		return duration > 0 && duration <= 9000;
+	}),
+	"v35 long ASR cues must stay inside the 9-second semantic safety limit"
+);
 assert.ok(longOrigins.some(text => text.endsWith("before it overlaps.")), "v35 must preserve the strong sentence boundary");
 assert.equal(longOrigins.at(-1), "Next caption.", "v35 must not absorb a new sentence merely because it is short");
 for (let index = 0; index < longParagraphs.length - 1; index += 1) {
