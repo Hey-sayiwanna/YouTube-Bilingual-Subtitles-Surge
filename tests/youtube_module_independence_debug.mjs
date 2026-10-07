@@ -11,8 +11,8 @@ const runtimeBundles = [
 	"Translate.response.youtube-fix-v39-other.bundle.js",
 ];
 
-assert.match(moduleSource, /#!name=YouTube 自动简中双语字幕 v40/);
-assert.match(moduleSource, /#!version=40\.0/);
+assert.match(moduleSource, /#!name=YouTube 自动简中双语字幕 v39/);
+assert.match(moduleSource, /#!version=39\.0/);
 assert.doesNotMatch(moduleSource, /github\.com\/DualSubs|raw\.githubusercontent\.com\/DualSubs/);
 assert.doesNotMatch(moduleSource, /Hey-sayiwanna\/Universal/);
 assert.doesNotMatch(moduleSource, /Composite\.response/);
