@@ -42,5 +42,7 @@ jobs:
         run: npm run test:asr-cjk
       - name: Test generic ASR segmentation
         run: npm run test:asr-generic
+      - name: Test YouTube Music lyrics
+        run: npm run test:music
       - name: Confirm generated bundles are committed
-        run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v39-en.bundle.js Translate.response.youtube-fix-v39-cjk.bundle.js Translate.response.youtube-fix-v39-other.bundle.js
+        run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v39-en.bundle.js Translate.response.youtube-fix-v39-cjk.bundle.js Translate.response.youtube-fix-v39-other.bundle.js YouTubeMusic.Lyrics.request.bundle.js YouTubeMusic.Lyrics.response.bundle.js

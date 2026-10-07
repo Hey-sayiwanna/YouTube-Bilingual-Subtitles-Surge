@@ -9,22 +9,25 @@
 	"scripts": {
 		"build:player": "node scripts/build-youtube-standalone-bundles.mjs",
 		"build:translate": "rspack build",
-		"build": "npm run build:player && npm run build:translate",
+		"build": "npm run build:player && npm run build:translate && npm run build:music",
 		"test:request": "node tests/force_translate_request_debug.mjs",
 		"test:xml": "node tests/translate_response_xml_debug.mjs",
 		"test:bundle": "node tests/youtube_translate_bundle_debug.mjs",
 		"test:independence": "node tests/youtube_module_independence_debug.mjs",
-		"test": "npm run test:request && npm run test:xml && npm run test:bundle && npm run test:independence && npm run test:asr && npm run test:asr-cjk && npm run test:asr-generic",
+		"test": "npm run test:request && npm run test:xml && npm run test:bundle && npm run test:independence && npm run test:asr && npm run test:asr-cjk && npm run test:asr-generic && npm run test:music",
 		"verify": "npm run build && npm test",
 		"test:asr": "node tests/asr_segmenter_regression.mjs",
 		"eval:asr": "node tests/asr_segmenter_eval.mjs --show",
 		"test:asr-cjk": "node tests/asr_cjk_regression.mjs",
 		"eval:asr-cjk": "node tests/asr_cjk_eval.mjs --show ja 60",
 		"test:asr-generic": "node tests/asr_generic_regression.mjs",
-		"eval:asr-generic": "node tests/asr_generic_eval.mjs"
+		"eval:asr-generic": "node tests/asr_generic_eval.mjs",
+		"build:music": "rspack build -c music-lyrics/rspack.config.js",
+		"test:music": "node music-lyrics/tests/lyrics.test.mjs && node music-lyrics/tests/bundle.test.mjs && node music-lyrics/tests/module.test.mjs"
 	},
 	"dependencies": {
-		"@nsnanocat/util": "^1.8.10"
+		"@nsnanocat/util": "^1.8.10",
+		"fflate": "^0.8.3"
 	},
 	"devDependencies": {
 		"@rspack/cli": "^1.5.8",

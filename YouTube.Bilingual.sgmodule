@@ -1,10 +1,12 @@
-#!name=YouTube 自动简中双语字幕 v39
-#!desc=v39 字幕脚本拆成英文/日韩/其他三个独立包按语言分流；英文、日韩自动字幕用专门断句模型，其他语言用通用标准（标点+停顿+长度）替代v36，单条长度时长受限、时间轴不重叠
+#!name=YouTube 自动简中双语字幕 v40
+#!desc=v40 字幕（英文/日韩/其他三包按语言分流，自动字幕专门断句）+ YouTube Music 歌词中文翻译（中文歌不翻、无歌词不处理、重复歌词每行都显示译文）；所有规则互不重叠，歌词响应避让 Enhance 模块
 #!author=Hey-sayiwanna
 #!homepage=https://github.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge
 #!icon=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/src/assets/icon_rounded.png
 #!category=YouTube
-#!version=39.0
+#!version=40.0
+#!arguments=歌词显示方式:原文在上,歌词避让Enhance:true
+#!arguments-desc=YouTube Music 歌词翻译设置\n歌词显示方式：原文在上 / 译文在上 / 仅译文\n歌词避让Enhance：开启后歌词请求走等价的「:443」地址，避免被「Youtube (Music) Enhance」的 youtube.response 抢走（Surge 每个请求只运行一个响应脚本）
 
 [Script]
 
@@ -32,5 +34,12 @@ DualSubs.AutoZH.TimedText.Translate.response.EN = type=http-response, pattern=^h
 DualSubs.AutoZH.TimedText.Translate.response.CJK = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext(?=\?)(?=.*subtype=Translate)(?=.*[?&]lang=(?:ja|ko)(?:[-_][^&]*)?(?:&|$)).*$, requires-body=1, max-size=-1, timeout=60, engine=webview, debug=true, script-path=https://cdn.jsdelivr.net/gh/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge@main/Translate.response.youtube-fix-v39-cjk.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=ALL
 DualSubs.AutoZH.TimedText.Translate.response.Other = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext(?=\?)(?=.*subtype=Translate)(?!.*[?&]lang=(?:en|ja|ko)(?:[-_][^&]*)?(?:&|$)).*$, requires-body=1, max-size=-1, timeout=60, engine=webview, debug=true, script-path=https://cdn.jsdelivr.net/gh/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge@main/Translate.response.youtube-fix-v39-other.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=ALL
 
+# ===== YouTube Music 歌词翻译（脚本与字幕完全独立：YouTubeMusic.Lyrics.*.bundle.js） =====
+# 只在歌词请求上生效；中文歌不翻译，无歌词不处理。若之前单独装过 YouTube.Music.Lyrics.sgmodule，请删除它，避免规则重复。
+YTMusic.Lyrics.request.proto = type=http-request, pattern=^https:\/\/youtubei\.googleapis\.com\/youtubei\/v1\/browse(\?.*)?$, requires-body=1, binary-body-mode=1, max-size=-1, engine=jsc, timeout=5, script-path=https://cdn.jsdelivr.net/gh/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge@main/YouTubeMusic.Lyrics.request.bundle.js, argument="Position={{{歌词显示方式}}}&Evade={{{歌词避让Enhance}}}"
+YTMusic.Lyrics.request.json = type=http-request, pattern=^https:\/\/music\.youtube\.com\/youtubei\/v1\/browse(\?.*)?$, requires-body=1, max-size=-1, engine=jsc, timeout=5, script-path=https://cdn.jsdelivr.net/gh/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge@main/YouTubeMusic.Lyrics.request.bundle.js, argument="Position={{{歌词显示方式}}}&Evade={{{歌词避让Enhance}}}"
+YTMusic.Lyrics.response.proto = type=http-response, pattern=^https:\/\/youtubei\.googleapis\.com(:443)?\/youtubei\/v1\/browse\?(.*&)?ytmLyrics=1, requires-body=1, binary-body-mode=1, max-size=-1, timeout=30, script-path=https://cdn.jsdelivr.net/gh/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge@main/YouTubeMusic.Lyrics.response.bundle.js, argument="Position={{{歌词显示方式}}}&Evade={{{歌词避让Enhance}}}"
+YTMusic.Lyrics.response.json = type=http-response, pattern=^https:\/\/music\.youtube\.com\/youtubei\/v1\/browse\?(.*&)?ytmLyrics=1, requires-body=1, max-size=-1, timeout=30, script-path=https://cdn.jsdelivr.net/gh/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge@main/YouTubeMusic.Lyrics.response.bundle.js, argument="Position={{{歌词显示方式}}}&Evade={{{歌词避让Enhance}}}"
+
 [MITM]
-hostname = %APPEND% www.youtube.com, m.youtube.com, tv.youtube.com, youtubei.googleapis.com
+hostname = %APPEND% www.youtube.com, m.youtube.com, tv.youtube.com, youtubei.googleapis.com, music.youtube.com
