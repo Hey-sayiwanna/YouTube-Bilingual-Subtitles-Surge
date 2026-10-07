@@ -969,12 +969,15 @@ function isYouTubeASRNonSpeechCue(text) {
 
 export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 	const {
-		softWidth = 44,
-		hardWidth = 64,
-		minimumWidth = 22,
-		pauseThreshold = 650,
-		strongPauseThreshold = 950,
-		maximumDuration = 6500,
+		softWidth = 72,
+		hardWidth = 104,
+		softWords = 14,
+		hardWords = 22,
+		minimumWidth = 28,
+		pauseThreshold = 360,
+		strongPauseThreshold = 900,
+		maximumDuration = 9000,
+		minimumDuration = 1000,
 		minimumTimedSegments = 6,
 		minimumTimingCoverage = 1,
 		minimumExplicitTimedSegments = 4,
@@ -1053,85 +1056,76 @@ export function resegmentYouTubeASRBySegmentTiming(body, options = {}) {
 		return { applied: false, reason: "insufficient-unique-segments", input: paragraphs.length, output: paragraphs.length, segments: segmentCount, timedSegments: timedSegmentCount, explicitTimedSegments: explicitTimedSegmentCount, coverage, explicitCoverage, boundaries: 0 };
 	}
 
+	const units = deduplicated.map((item, index) => {
+		const nextStart = deduplicated[index + 1]?.start;
+		let end = Number.isFinite(nextStart) && nextStart > item.start ? nextStart : originalEnd;
+		if (!Number.isFinite(end) || end <= item.start) end = item.start + 1;
+		return {
+			text: item.text,
+			start: item.start,
+			end,
+			template: item.paragraph,
+			segmented: true,
+			event: isYouTubeASRNonSpeechCue(item.text),
+		};
+	});
+
 	const groups = [];
-	let groupStart = 0;
-	while (groupStart < deduplicated.length) {
-		let combined = "";
-		let best;
-		let forcedEnd = deduplicated.length - 1;
+	let region = [];
+	const flushRegion = () => {
+		if (!region.length) return;
+		groups.push(...partitionYouTubeASREstimatedTokens(region, {
+			softWidth,
+			hardWidth,
+			softWords,
+			hardWords,
+			minimumWidth,
+			maximumGap: pauseThreshold,
+			maximumDuration,
+			minimumDuration,
+		}));
+		region = [];
+	};
 
-		for (let index = groupStart; index < deduplicated.length; index += 1) {
-			combined = joinYouTubeCaptionFragments(combined, deduplicated[index].text);
-			const width = measureYouTubeCaptionWidth(combined.trim());
-			const next = deduplicated[index + 1];
-			if (!next) {
-				forcedEnd = index;
-				best = { end: index, score: Number.POSITIVE_INFINITY };
-				break;
-			}
-
-			const duration = next.start - deduplicated[groupStart].start;
-			const step = Math.max(0, next.start - deduplicated[index].start);
-			const trimmed = combined.trim();
-			const strongPunctuation = /[.!?。！？…]["'’”)]*$/u.test(trimmed);
-			const weakPunctuation = /[,;:，；：]["'’”)]*$/u.test(trimmed);
-			const readableWidth = width >= minimumWidth;
-			let score = -Math.abs(width - softWidth);
-			if (strongPunctuation) score += 120;
-			else if (weakPunctuation) score += 35;
-			if (step >= strongPauseThreshold) score += 95;
-			else if (step >= pauseThreshold) score += 65;
-			else if (step >= 450) score += 25;
-			if (width >= softWidth * 0.75 && width <= softWidth * 1.25) score += 18;
-			if (duration >= 1800 && duration <= 5200) score += 10;
-
-			const meaningfulBoundary =
-				(strongPunctuation && width >= 12) ||
-				(readableWidth && (step >= pauseThreshold || weakPunctuation || width >= softWidth * 0.72));
-			if (meaningfulBoundary && (!best || score > best.score)) best = { end: index, score };
-
-			const mustBreak = width >= hardWidth || duration >= maximumDuration;
-			if (mustBreak) {
-				forcedEnd = index;
-				break;
-			}
-			forcedEnd = index;
+	for (const unit of units) {
+		if (unit.event) {
+			flushRegion();
+			groups.push([unit]);
+			continue;
 		}
-
-		const groupEnd = best?.end ?? forcedEnd;
-		const items = deduplicated.slice(groupStart, groupEnd + 1);
-		let text = "";
-		for (const item of items) text = joinYouTubeCaptionFragments(text, item.text);
-		groups.push({
-			start: items[0].start,
-			text: text.trim(),
-			template: items[0].paragraph,
-		});
-		groupStart = groupEnd + 1;
+		const previous = region.at(-1);
+		if (previous && unit.start - previous.end > strongPauseThreshold) flushRegion();
+		region.push(unit);
 	}
+	flushRegion();
 
 	if (!groups.length) {
-		return { applied: false, reason: "no-groups", input: paragraphs.length, output: paragraphs.length, segments: segmentCount, timedSegments: timedSegmentCount, coverage, boundaries: 0 };
+		return { applied: false, reason: "no-groups", input: paragraphs.length, output: paragraphs.length, segments: segmentCount, timedSegments: timedSegmentCount, explicitTimedSegments: explicitTimedSegmentCount, coverage, explicitCoverage, boundaries: 0 };
 	}
 
 	const output = groups.map((group, index) => {
-		const cue = { ...group.template };
-		const nextStart = groups[index + 1]?.start;
-		const fallbackEnd = originalEnd > group.start ? originalEnd : group.start + 2500;
-		const end = Number.isFinite(nextStart) && nextStart > group.start ? nextStart : fallbackEnd;
-		cue["@t"] = String(group.start);
-		cue["@d"] = String(Math.max(1, end - group.start));
+		const first = group[0];
+		const last = group.at(-1);
+		let text = "";
+		for (const unit of group) text = joinYouTubeCaptionFragments(text, unit.text);
+		const cue = { ...first.template };
+		const nextStart = groups[index + 1]?.[0]?.start;
+		let end = last.end;
+		if (Number.isFinite(nextStart) && nextStart > first.start) end = Math.min(end, nextStart);
+		if (!Number.isFinite(end) || end <= first.start) end = first.start + 1;
+		cue["@t"] = String(first.start);
+		cue["@d"] = String(Math.max(1, end - first.start));
 		delete cue["@w"];
 		delete cue["@a"];
 		delete cue["#"];
-		cue.s = { "#": group.text };
+		cue.s = { "#": text.trim() };
 		return cue;
 	});
 
 	timedTextBody.p = output;
 	return {
 		applied: true,
-		reason: "segment-timing",
+		reason: "segment-timing-semantic",
 		input: paragraphs.length,
 		output: output.length,
 		segments: segmentCount,
