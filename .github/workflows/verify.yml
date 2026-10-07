@@ -36,5 +36,7 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
       - name: Test module independence
         run: npm run test:independence
+      - name: Test ASR segmentation
+        run: npm run test:asr
       - name: Confirm generated bundles are committed
-        run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v36.bundle.js
+        run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v37.bundle.js

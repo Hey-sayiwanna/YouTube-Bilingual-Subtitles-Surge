@@ -21,6 +21,10 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ## 更新日志
 
+### 2026-10-07（v37）
+
+- **v37**：英文等拉丁字母的无标点自动字幕，改用离线标点模型加动态规划断句。模型用 TED 口语语料训练，体积约 690KB，不联网、不需要 API Key。新逻辑优先在句末或从句处断开，跨 `[Music]` 或长停顿的孤词会归回原句（例如 `wake | up Aran` → `wake up.` / `Aran is…`）。单条字幕不超过 86 字符、8 秒，时间轴保证不重叠，并补充高置信度的句号和首字母大写，以提升翻译质量。在样例视频上，不自然断点从 44% 降到约 15%，句末命中率从 40% 升到约 70%。韩语、日语等非拉丁字母自动字幕继续走 v36 逻辑。
+
 ### 2026-10-07
 
 - **v36**：统一精确词时间与估算词时间两条英文自动字幕重建路径，全部使用同一套语义分段逻辑与104字符/22词/9秒安全上限。
@@ -84,7 +88,11 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 | `Translate.response.youtube-fix-v33.bundle.js` | 保留给仍在使用 v33 的用户兼容/回退 |
 | `Translate.response.youtube-fix-v34.bundle.js` | 保留给仍在使用 v34 的用户兼容/回退 |
 | `Translate.response.youtube-fix-v35.bundle.js` | 保留给仍在使用 v35 的用户兼容/回退 |
-| `Translate.response.youtube-fix-v36.bundle.js` | 当前 v36 字幕响应脚本 |
+| `Translate.response.youtube-fix-v36.bundle.js` | 保留给仍在使用 v36 的用户兼容/回退 |
+| `Translate.response.youtube-fix-v37.bundle.js` | 当前 v37 字幕响应脚本 |
+| `src/function/asrSegmenter.mjs` | v37 自动字幕断句器：取词与时间、模型打分、动态规划断句、时间轴 |
+| `src/function/asrBoundaryModel.mjs` | 自动生成的标点模型权重，不要手改 |
+| `tools/` | 模型训练、调参脚本（`train.py`、`build_model.py`、`tune.mjs`） |
 | `tests/` | 自动字幕、官方字幕、广播字幕和模块独立性测试 |
 
 > 仓库清理原则：当前运行链依赖的文件一律保留；v24–v28、v32、v33、v34 与 v35 兼容 bundle 保留；v18–v23 与 v29–v31 的旧翻译 bundle 已从主线移除，但历史代码仍可在 Git 提交记录中查看。

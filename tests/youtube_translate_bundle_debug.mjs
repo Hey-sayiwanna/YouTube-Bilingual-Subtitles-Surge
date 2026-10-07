@@ -62,7 +62,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v36.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../Translate.response.youtube-fix-v37.bundle.js?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
@@ -83,7 +83,7 @@ const automatic = await runBundle({
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "36");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "37");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unified-semantic-asr-v36");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
@@ -100,9 +100,9 @@ const ufcParagraphTimed = await runBundle({
 	body: ufcParagraphTimedSrv3,
 });
 const ufcBody = XML.parse(ufcParagraphTimed.output.body).timedtext.body;
-assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unified-semantic-asr-v36");
+assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "punctuation-model-v37.0");
 assert.ok(ufcBody.p.length < 6, "v36 must remove empty display events and merge continuous ASR fragments");
-assert.match(ufcParagraphTimed.output.body, /instead of waiting for khabib to come at him&#x000A;UFC译文1/, "orphan 'him' must be translated together with 'come at'");
+assert.match(ufcParagraphTimed.output.body, /instead of waiting for khabib to come at him\.?&#x000A;UFC译文1/i, "orphan 'him' must be translated together with 'come at'");
 assert.doesNotMatch(ufcParagraphTimed.output.body, /<s>him&#x000A;/, "v36 must not leave 'him' as a standalone translated cue");
 for (let index = 0; index < ufcBody.p.length - 1; index += 1) {
 	const currentEnd = Number(ufcBody.p[index]["@t"]) + Number(ufcBody.p[index]["@d"] ?? 0);
@@ -167,7 +167,7 @@ const official = await runBundle({
 	body: plainOfficialSrv3,
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "36");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "37");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Broadcast-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "official");

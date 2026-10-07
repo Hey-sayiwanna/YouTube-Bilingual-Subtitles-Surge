@@ -1,6 +1,6 @@
 {
 	"name": "@hey-sayiwanna/youtube-bilingual-subtitles-surge",
-	"version": "36.0.0",
+	"version": "37.0.0",
 	"private": true,
 	"type": "module",
 	"description": "独立维护的 Surge YouTube 自动简中双语字幕模块",
@@ -14,8 +14,10 @@
 		"test:xml": "node tests/translate_response_xml_debug.mjs",
 		"test:bundle": "node tests/youtube_translate_bundle_debug.mjs",
 		"test:independence": "node tests/youtube_module_independence_debug.mjs",
-		"test": "npm run test:request && npm run test:xml && npm run test:bundle && npm run test:independence",
-		"verify": "npm run build && npm test"
+		"test": "npm run test:request && npm run test:xml && npm run test:bundle && npm run test:independence && npm run test:asr",
+		"verify": "npm run build && npm test",
+		"test:asr": "node tests/asr_segmenter_regression.mjs",
+		"eval:asr": "node tests/asr_segmenter_eval.mjs --show"
 	},
 	"dependencies": {
 		"@nsnanocat/util": "^1.8.10"
