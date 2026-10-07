@@ -1,5 +1,29 @@
 import assert from "node:assert/strict";
 import XML from "../src/XML/XML.mjs";
+import { readFileSync } from "node:fs";
+
+// v39: pick the bundle exactly like Surge does, from the module's own patterns.
+const moduleRules = readFileSync(new URL("../YouTube.Bilingual.sgmodule", import.meta.url), "utf8")
+	.split("\n")
+	.filter(line => line.startsWith("DualSubs.AutoZH.TimedText.Translate.response"))
+	.map(line => ({
+		pattern: new RegExp(line.match(/pattern=([^,]+),/)[1]),
+		bundle: line.match(/script-path=\S*\/(Translate\.response\.youtube-fix-v39-[a-z]+\.bundle\.js)/)[1],
+	}));
+export function routeBundle(url) {
+	const matches = moduleRules.filter(rule => rule.pattern.test(url));
+	assert.equal(matches.length, 1, `exactly one timedtext rule must match ${url}, got ${matches.length}`);
+	return matches[0].bundle;
+}
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=en&kind=asr&subtype=Translate"), "Translate.response.youtube-fix-v39-en.bundle.js");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&caps=asr&lang=en-GB&tlang=zh-Hans&subtype=Translate"), "Translate.response.youtube-fix-v39-en.bundle.js");
+assert.equal(routeBundle("https://m.youtube.com/api/timedtext?lang=ja&v=a&subtype=Translate"), "Translate.response.youtube-fix-v39-cjk.bundle.js");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=ko&subtype=Translate&kind=asr"), "Translate.response.youtube-fix-v39-cjk.bundle.js");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=es&tlang=en&subtype=Translate"), "Translate.response.youtube-fix-v39-other.bundle.js", "tlang=en must not route to the English bundle");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=eng&subtype=Translate"), "Translate.response.youtube-fix-v39-other.bundle.js");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&subtype=Translate"), "Translate.response.youtube-fix-v39-other.bundle.js");
+assert.equal(moduleRules.filter(rule => rule.pattern.test("https://www.youtube.com/api/timedtext?v=a&lang=en")).length, 0, "requests without subtype=Translate are not touched");
+
 
 const rollingSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><ws id="0"/><ws id="1" mh="2" ju="0" sd="3"/><wp id="0"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><w t="0" id="1" wp="1" ws="1"/><p t="40" d="4200" w="1"><s>첫 번째 문장</s></p><p t="4230" w="1" a="1"></p><p t="4240" d="4200" w="1"><s>두 번째 문장</s></p></body></timedtext>`;
 const plainOfficialSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="2" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="40" d="4200" wp="2"><s>첫 번째 문장</s></p><p t="4230" d="10" wp="2"></p><p t="4240" d="4200" wp="2"><s>두 번째 문장</s></p></body></timedtext>`;
@@ -62,7 +86,7 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	});
 	globalThis.$done = value => finish(value);
 
-	await import(`../Translate.response.youtube-fix-v37.bundle.js?test=${testName}-${Date.now()}`);
+	await import(`../${routeBundle(url)}?test=${testName}-${Date.now()}`);
 	let timeout;
 	const output = await Promise.race([
 		completed,
@@ -83,13 +107,14 @@ const automatic = await runBundle({
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "37");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "39");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unified-semantic-asr-v36");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "asr-v39.0-ko");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
 assert.equal(automaticBody.w, undefined);
 assert.ok(automaticBody.p.every(paragraph => paragraph["@w"] === undefined && paragraph["@a"] === undefined));
-assert.match(automatic.output.body, /첫 번째 문장&#x000A;第一句/);
+assert.match(automatic.output.body, /첫 번째 문장\.?&#x000A;第一句/);
+assert.match(automatic.output.body, /두 번째 문장\.?&#x000A;第二句/);
 assert.match(automatic.output.body, /두 번째 문장&#x000A;第二句/);
 
 
@@ -100,7 +125,7 @@ const ufcParagraphTimed = await runBundle({
 	body: ufcParagraphTimedSrv3,
 });
 const ufcBody = XML.parse(ufcParagraphTimed.output.body).timedtext.body;
-assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "punctuation-model-v37.0");
+assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "asr-v39.0-en");
 assert.ok(ufcBody.p.length < 6, "v36 must remove empty display events and merge continuous ASR fragments");
 assert.match(ufcParagraphTimed.output.body, /instead of waiting for khabib to come at him\.?&#x000A;UFC译文1/i, "orphan 'him' must be translated together with 'come at'");
 assert.doesNotMatch(ufcParagraphTimed.output.body, /<s>him&#x000A;/, "v36 must not leave 'him' as a standalone translated cue");
@@ -167,7 +192,7 @@ const official = await runBundle({
 	body: plainOfficialSrv3,
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "37");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "39");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Broadcast-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "official");
@@ -261,6 +286,17 @@ assert.equal(longBroadcast.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "broa
 assert.equal((longBroadcast.output.body.match(/&#x000A;广播字幕翻译/gu) ?? []).length, 3001);
 assert.ok(longBroadcast.maximumActiveRequests <= 6, `broadcast translation concurrency must stay bounded, received ${longBroadcast.maximumActiveRequests}`);
 
+// v38+: Korean ASR is re-segmented by the model, so the cue count changes.
+// The scheduler tests below only require that every output cue received
+// exactly one translation and that nothing was lost.
+function assertEveryCueTranslated(result, marker, label) {
+	const output = result.output;
+	const cues = [].concat(XML.parse(output.body).timedtext.body.p ?? []);
+	const translated = (output.body.match(new RegExp(`&#x000A;${marker}`, "gu")) ?? []).length;
+	assert.ok(cues.length > 0, `${label}: no cues`);
+	assert.equal(translated, cues.length, `${label}: every cue must carry one translation`);
+}
+
 const capturedLike = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=ipad&kind=asr&lang=ko&format=srv3&subtype=Translate",
 	translation: rows => rows.map((_, index) => `并发翻译${index + 1}`).join("\r"),
@@ -274,7 +310,7 @@ assert.ok(capturedLike.translateRequestURLs.every(url => {
 	const query = new URL(url).searchParams.get("q");
 	return encodeURIComponent(query).length <= 2400;
 }));
-assert.equal(XML.parse(capturedLike.output.body).timedtext.body.p.length, 231);
+assertEveryCueTranslated(capturedLike, "并发翻译", "ipad-large-automatic");
 
 const multilineAutomatic = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=multiline&kind=asr&lang=ko&format=srv3&subtype=Translate",
@@ -284,8 +320,7 @@ const multilineAutomatic = await runBundle({
 });
 assert.ok(multilineAutomatic.translateRequestURLs.length > 2);
 assert.ok(multilineAutomatic.translateRequestURLs.every(url => encodeURIComponent(new URL(url).searchParams.get("q")).length <= 2400));
-assert.equal(XML.parse(multilineAutomatic.output.body).timedtext.body.p.length, 535);
-assert.equal((multilineAutomatic.output.body.match(/&#x000A;翻译/gu) ?? []).length, 535);
+assertEveryCueTranslated(multilineAutomatic, "翻译", "automatic-multiline-body");
 
 let droppedAutomaticRow = false;
 const ipadMergedMismatch = await runBundle({
@@ -301,8 +336,7 @@ const ipadMergedMismatch = await runBundle({
 	testName: "ipad-merged-single-batch-mismatch",
 	body: ipadMergedSrv3,
 });
-assert.equal(XML.parse(ipadMergedMismatch.output.body).timedtext.body.p.length, 248);
-assert.equal((ipadMergedMismatch.output.body.match(/&#x000A;局部重试翻译/gu) ?? []).length, 248);
+assertEveryCueTranslated(ipadMergedMismatch, "局部重试翻译", "ipad-merged-mismatch");
 assert.ok(ipadMergedMismatch.translateRequestURLs.length < 80, "a single bad batch must not retry every subtitle row");
 
 let droppedHugeAutomaticRow = false;
@@ -321,7 +355,7 @@ const hugeAutomatic = await runBundle({
 	concurrentRequestLimit: 6,
 	responseDelay: 2,
 });
-assert.equal((hugeAutomatic.output.body.match(/&#x000A;超长视频翻译/gu) ?? []).length, 3711);
+assertEveryCueTranslated(hugeAutomatic, "超长视频翻译", "huge-automatic");
 assert.ok(hugeAutomatic.translateRequestURLs.length > 60);
 assert.ok(hugeAutomatic.maximumActiveRequests <= 6, `automatic translation concurrency must stay bounded, received ${hugeAutomatic.maximumActiveRequests}`);
 

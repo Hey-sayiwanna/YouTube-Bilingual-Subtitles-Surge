@@ -38,5 +38,9 @@ jobs:
         run: npm run test:independence
       - name: Test ASR segmentation
         run: npm run test:asr
+      - name: Test Japanese and Korean ASR segmentation
+        run: npm run test:asr-cjk
+      - name: Test generic ASR segmentation
+        run: npm run test:asr-generic
       - name: Confirm generated bundles are committed
-        run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v37.bundle.js
+        run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v39-en.bundle.js Translate.response.youtube-fix-v39-cjk.bundle.js Translate.response.youtube-fix-v39-other.bundle.js

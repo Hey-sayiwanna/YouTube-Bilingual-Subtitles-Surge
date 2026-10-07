@@ -7,24 +7,34 @@ import pkg from "./package.json" with { type: "json" };
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig({
-	entry: {
-		"Translate.response.youtube-fix-v37": "./src/YouTube.Translate.response.js",
-	},
-	output: {
-		path: projectRoot,
-		filename: "[name].bundle.js",
-		chunkFormat: false,
-		clean: false,
-		library: { type: "module" },
-	},
-	plugins: [
-		new NodePolyfillPlugin(),
-		new rspack.BannerPlugin({
-			banner: `console.log('Hey-sayiwanna YouTube Bilingual v${pkg.version}');`,
-			raw: true,
-		}),
-	],
-	devtool: false,
-	performance: false,
-});
+// v39 ships three independent bundles. They share all code and differ only in
+// which language models are compiled in (src/profiles/*.mjs):
+//   en    -> English model
+//   cjk   -> Japanese + Korean models
+//   other -> no model (generic standard for every other language)
+// YouTube.Bilingual.sgmodule routes each timedtext request by its lang= parameter.
+const bundles = { en: "en", cjk: "cjk", other: "other" };
+
+export default Object.entries(bundles).map(([name, profile]) =>
+	defineConfig({
+		name,
+		entry: { [`Translate.response.youtube-fix-v39-${name}`]: "./src/YouTube.Translate.response.js" },
+		resolve: { alias: { "asr-profiles": path.join(projectRoot, "src/profiles", `${profile}.mjs`) } },
+		output: {
+			path: projectRoot,
+			filename: "[name].bundle.js",
+			chunkFormat: false,
+			clean: false,
+			library: { type: "module" },
+		},
+		plugins: [
+			new NodePolyfillPlugin(),
+			new rspack.BannerPlugin({
+				banner: `console.log('Hey-sayiwanna YouTube Bilingual v${pkg.version} [${name}]');`,
+				raw: true,
+			}),
+		],
+		devtool: false,
+		performance: false,
+	}),
+);

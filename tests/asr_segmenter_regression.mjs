@@ -1,7 +1,7 @@
 // Regression gate for the v37 ASR segmenter (run by `npm test`).
 import assert from "node:assert/strict";
 import XML from "../src/XML/XML.mjs";
-import { resegmentYouTubeASR } from "../src/function/asrSegmenter.mjs";
+import { resegmentYouTubeASR, extractASRWords } from "../src/function/asrSegmenter.mjs";
 
 const silence = console.table;
 console.table = () => {};
@@ -41,3 +41,35 @@ assert.match(rollingText, /^It's time for lunch\.? (?:and|And) he is always here
 assert.ok(!rollingP.some(p => /\bis$/.test(p.s["#"])), "must not break between 'is' and 'always' (original <p> border)");
 
 console.log(JSON.stringify({ asrSegmenterRegression: "passed", summary }, null, 1));
+
+// Ordinary, non-overlapping speech must retain genuine repeated phrases.
+const overlappingSpeech = XML.parse(`<timedtext><body><p t="0" d="5000"><s>one two three</s></p><p t="1000" d="4000"><s>one two three four five</s></p></body></timedtext>`);
+assert.equal(
+	extractASRWords(overlappingSpeech).words.map(word => word.text).join(" "),
+	"one two three four five",
+	"overlapping rolling captions must remove duplicated prefixes",
+);
+const adjacentSpeech = XML.parse(`<timedtext><body><p t="0" d="1000"><s>let patients help</s></p><p t="1000" d="2000"><s>let patients help us</s></p></body></timedtext>`);
+assert.equal(
+	extractASRWords(adjacentSpeech).words.map(word => word.text).join(" "),
+	"let patients help let patients help us",
+	"adjacent spoken repetition must be retained",
+);
+// Long display windows do not imply that precisely timed speech overlaps.
+for (const [nextStart, expected] of [
+	[400, "one two three four five"],
+	[2000, "one two three one two three four five"],
+]) {
+	const exactSpeech = XML.parse(`<timedtext><body><p t="0" d="5000"><s>one</s><s t="400"> two</s><s t="800"> three</s></p><p t="${nextStart}" d="4000"><s>one</s><s t="400"> two</s><s t="800"> three</s><s t="1200"> four</s><s t="1600"> five</s></p></body></timedtext>`);
+	assert.equal(
+		extractASRWords(exactSpeech).words.map(word => word.text).join(" "),
+		expected,
+		`precise speech timing must govern deduplication at ${nextStart}ms`,
+	);
+}
+const repeatedSpeech = XML.parse(`<timedtext><body><p t="0" d="1000"><s>let patients help</s></p><p t="10000" d="2000"><s>let patients help us</s></p></body></timedtext>`);
+assert.equal(
+    extractASRWords(repeatedSpeech).words.map(word => word.text).join(" "),
+    "let patients help let patients help us",
+    "non-overlapping spoken repetition must never be removed as rolling text",
+);

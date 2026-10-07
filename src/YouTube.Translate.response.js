@@ -15,7 +15,9 @@ import {
 	splitYouTubeOfficialLongParagraphs,
 	writeYouTubeTimedTextParagraph,
 } from "./function/youtubeTimedText.mjs";
-import { resegmentYouTubeASR, ASR_SEGMENTER_VERSION } from "./function/asrSegmenter.mjs";
+import { resegmentYouTubeASR, ASR_SEGMENTER_VERSION } from "./function/asrCore.mjs";
+// Resolved per bundle by rspack.config.js: src/profiles/{en,cjk,other}.mjs
+import ASR_PROFILES, { BUNDLE_ID } from "asr-profiles";
 
 const SETTINGS = Object.freeze({
 	Source: "AUTO",
@@ -38,7 +40,7 @@ const SETTINGS = Object.freeze({
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 37 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 39 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -49,13 +51,13 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const isAutomaticCaption = detectYouTubeAutomaticCaption(requestURL);
 	const isBroadcastCaption = !isAutomaticCaption && detectYouTubeBroadcastCaption(requestURL, body);
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 37 skipped: response is not timedtext XML");
+		Console.warn("YouTube FIX 39 skipped: response is not timedtext XML");
 		return;
 	}
 	const chineseSource = detectYouTubeChineseCaption(requestURL, body);
 	if (chineseSource.detected) {
 		$response.headers = $response.headers ?? {};
-		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "37";
+		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "39";
 		$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 		$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = "chinese-pass-through";
 		$response.headers["X-Hey-Sayiwanna-Chinese-Source"] = chineseSource.reason;
@@ -66,14 +68,20 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	ensureYouTubeTimedTextRows(body, 2);
 	let asrMode = "unchanged";
 	if (isAutomaticCaption) {
-		// v37: punctuation-model segmentation for punctuation-free Latin-script ASR.
-		const modelResegment = resegmentYouTubeASR(body);
-		Console.info(`YouTube ASR v37 model segmentation: applied=${modelResegment.applied}, reason=${modelResegment.reason}, input=${modelResegment.input ?? 0}, words=${modelResegment.words ?? 0}, output=${modelResegment.output ?? 0}`);
-		asrMode = modelResegment.applied ? `punctuation-model-v${ASR_SEGMENTER_VERSION}` : "unified-semantic-asr-v36";
+		// v37 English / v38 Japanese + Korean / v39 generic standard for the rest.
+		let modelResegment;
+		try {
+			modelResegment = resegmentYouTubeASR(body, { profiles: ASR_PROFILES, languageHint: requestURL.searchParams.get("lang") ?? "" });
+		} catch (error) {
+			Console.error(`YouTube ASR v39 segmentation crashed, using v36 fallback: ${error?.message ?? error}`);
+			modelResegment = { applied: false, reason: "exception" };
+		}
+		Console.info(`YouTube ASR v39 segmentation: bundle=${BUNDLE_ID}, applied=${modelResegment.applied}, language=${modelResegment.language}, profile=${modelResegment.profile}, reason=${modelResegment.reason}, input=${modelResegment.input ?? 0}, words=${modelResegment.words ?? 0}, output=${modelResegment.output ?? 0}`);
+		asrMode = modelResegment.applied ? `asr-v${ASR_SEGMENTER_VERSION}-${modelResegment.profile === modelResegment.language ? modelResegment.language : `generic-${modelResegment.language}`}` : "unified-semantic-asr-v36";
 		if (modelResegment.applied) {
 			disableYouTubeASRRollingWindow(body);
 		} else {
-			// Non-Latin ASR (Korean, Japanese, ...) keeps the previous v36 path unchanged.
+			// Last-resort safety net only (crash / unreadable body): previous v36 path.
 			const paragraphResegment = resegmentYouTubeASRByParagraphTiming(body);
 			Console.info(`YouTube ASR v36 unified-semantic-asr rebuild: applied=${paragraphResegment.applied}, reason=${paragraphResegment.reason}, input=${paragraphResegment.input}, visible=${paragraphResegment.visible}, output=${paragraphResegment.output}, removedEmpty=${paragraphResegment.removedEmpty}, merged=${paragraphResegment.merged}`);
 			const normalizedParagraphs = disableYouTubeASRRollingWindow(body);
@@ -128,9 +136,10 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "37";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "39";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = asrMode;
+	$response.headers["X-Hey-Sayiwanna-Bundle"] = BUNDLE_ID;
 	$response.headers["X-Hey-Sayiwanna-Broadcast-Mode"] = isBroadcastCaption ? "fixed-two-lines-no-roll-up" : "unchanged";
 	$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = isAutomaticCaption ? "automatic" : isBroadcastCaption ? "broadcast" : "official";
 	$response.headers["X-Hey-Sayiwanna-XML-Original-Length"] = String(originalXMLLength);
@@ -219,7 +228,7 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/37",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/39",
 			Referer: "https://translate.google.com",
 		},
 		timeout: 15,
