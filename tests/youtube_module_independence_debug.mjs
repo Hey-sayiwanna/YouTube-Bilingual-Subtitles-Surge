@@ -6,17 +6,17 @@ const moduleSource = await readFile("YouTube.Bilingual.sgmodule", "utf8");
 const runtimeBundles = [
 	"request.youtube-standalone-v18.bundle.js",
 	"response.youtube-standalone-v18.bundle.js",
-	"Translate.response.youtube-fix-v35.bundle.js",
+	"Translate.response.youtube-fix-v36.bundle.js",
 ];
 
-assert.match(moduleSource, /#!name=YouTube 自动简中双语字幕 v35/);
-assert.match(moduleSource, /#!version=35\.0/);
+assert.match(moduleSource, /#!name=YouTube 自动简中双语字幕 v36/);
+assert.match(moduleSource, /#!version=36\.0/);
 assert.doesNotMatch(moduleSource, /github\.com\/DualSubs|raw\.githubusercontent\.com\/DualSubs/);
 assert.doesNotMatch(moduleSource, /Hey-sayiwanna\/Universal/);
 assert.doesNotMatch(moduleSource, /Composite\.response/);
 assert.match(moduleSource, new RegExp(`${repository}/main/request\\.youtube-standalone-v18\\.bundle\\.js`));
 assert.match(moduleSource, new RegExp(`${repository}/main/response\\.youtube-standalone-v18\\.bundle\\.js`));
-assert.match(moduleSource, new RegExp(`(?:${repository}/main|${repository}@main)/Translate\\.response\\.youtube-fix-v35\\.bundle\\.js`));
+assert.match(moduleSource, new RegExp(`(?:${repository}/main|${repository}@main)/Translate\\.response\\.youtube-fix-v36\\.bundle\\.js`));
 assert.match(moduleSource, new RegExp(`${repository}/main/force_translate_request\\.js`));
 assert.match(moduleSource, /DualSubs\.AutoZH\.Player\.response\.proto = type=http-response/);
 
@@ -26,11 +26,11 @@ for (const path of runtimeBundles) {
 	assert.doesNotMatch(source, /github\.com\/DualSubs|raw\.githubusercontent\.com\/DualSubs/);
 }
 
-const translateBundle = await readFile("Translate.response.youtube-fix-v35.bundle.js", "utf8");
-assert.match(translateBundle, /Hey-sayiwanna YouTube Translate FIX 35 active/);
+const translateBundle = await readFile("Translate.response.youtube-fix-v36.bundle.js", "utf8");
+assert.match(translateBundle, /Hey-sayiwanna YouTube Translate FIX 36 active/);
 assert.match(translateBundle, /YouTube standalone settings active; BoxJs bypassed/);
 assert.match(translateBundle, /YouTube Chinese source detected; translation bypassed/);
-assert.match(translateBundle, /YouTube ASR v35 semantic-asr rebuild/);
+assert.match(translateBundle, /YouTube ASR v36 unified-semantic-asr rebuild/);
 assert.match(translateBundle, /YouTube ASR fixed two-line mode/);
 assert.match(translateBundle, /YouTube ASR translation batches/);
 assert.match(translateBundle, /YouTube official translation batches/);
