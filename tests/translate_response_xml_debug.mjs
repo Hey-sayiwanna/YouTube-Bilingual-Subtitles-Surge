@@ -64,6 +64,10 @@ const independentContentSubjectASR = `<?xml version="1.0" encoding="utf-8" ?><ti
 const independentPossessiveSubjectASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3200"><s>the room was already quiet and cold</s></p><p t="3200" d="3200"><s>his hands were shaking badly</s></p></body></timedtext>`;
 const nominalSubordinateASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="2800"><s>the road stays open during winter</s></p><p t="2800" d="4200"><s>when the temperature drops below minus 55 degrees</s></p></body></timedtext>`;
 const nominalObjectASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="2600"><s>after the takedown khabib got</s></p><p t="2600" d="3600"><s>a hold of his ankles he's got his leg</s></p></body></timedtext>`;
+const relativeContinuationASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3000"><s>today is relatively warm in yakutia only minus 40 degrees</s></p><p t="3000" d="3200"><s>which means arian must go to school</s></p></body></timedtext>`;
+const becauseContinuationASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3000"><s>there are no water treatment facilities</s></p><p t="3000" d="3600"><s>because the pipes freeze during the long winter</s></p></body></timedtext>`;
+const contrastContinuationASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="3000"><s>usually the classes end at 2 pm</s></p><p t="3000" d="3200"><s>but today arian finished a little earlier</s></p></body></timedtext>`;
+const semanticSafetyCapASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="0" d="2600"><s>because without proper dressing the cold will reach deep inside your bones</s></p><p t="2600" d="3200"><s>threatening your life and causing serious pain in the fingers and toes</s></p><p t="5800" d="3000"><s>she also makes sure that his face is fully covered</s></p></body></timedtext>`;
 const crossParagraphTimedASR = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><body><p t="27000" d="2000" w="1"><s>instead</s><s t="250"> of</s><s t="500"> waiting</s><s t="850"> for</s><s t="1100"> khabib</s><s t="1450"> to</s><s t="1650"> come</s><s t="1800"> at</s></p><p t="29000" d="4000" w="1"><s> him</s><s t="900"> Khabib</s><s t="1250"> got</s><s t="1500"> a</s><s t="1650"> hold</s><s t="1900"> of</s><s t="2100"> his</s><s t="2400"> ankles.</s></p></body></timedtext>`;
 const rollingSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><ws id="0"/><ws id="1" mh="2" ju="0" sd="3"/><wp id="0"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><w t="0" id="1" wp="1" ws="1"/><p t="40" d="4200" w="1"><s>첫 번째 문장</s></p><p t="4230" w="1" a="1"></p><p t="4240" d="4200" w="1"><s>두 번째 문장</s></p></body></timedtext>`;
 const longASRSrv3 = `<?xml version="1.0" encoding="utf-8" ?><timedtext format="3"><head><wp id="0"/><wp id="1" ap="6" ah="20" av="100" rc="2" cc="40"/></head><body><p t="1000" d="9000" w="1"><s>This is a very long automatic caption, and it should be divided at a natural boundary before it overlaps.</s></p><p t="8500" d="2000" w="1"><s>Next caption.</s></p></body></timedtext>`;
@@ -137,17 +141,10 @@ assert.ok(possessiveAttachmentTexts.every(text => !/^his family warm\b/u.test(te
 const subordinateClauseBody = XML.parse(subordinateClauseASR);
 resegmentYouTubeASRByParagraphTiming(subordinateClauseBody);
 const subordinateClauseTexts = subordinateClauseBody.timedtext.body.p.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
-assert.ok(
-	subordinateClauseTexts.some(text => /^the children in yakutia will go to school$/u.test(text)),
-	`raw p boundary at will | go must be ignored: ${JSON.stringify(subordinateClauseTexts)}`
-);
-assert.ok(
-	subordinateClauseTexts.some(text => /^when it's warmer than minus 54 degrees$/u.test(text)),
-	`natural subordinate clause should be allowed to start a new cue: ${JSON.stringify(subordinateClauseTexts)}`
-);
-assert.ok(
-	subordinateClauseTexts.every(text => !/will$/u.test(text)),
-	`must not preserve YouTube's bad raw boundary after will: ${JSON.stringify(subordinateClauseTexts)}`
+assert.deepEqual(
+	subordinateClauseTexts,
+	["the children in yakutia will go to school when it's warmer than minus 54 degrees"],
+	`short subordinate clause should stay with its governing statement while raw p is ignored: ${JSON.stringify(subordinateClauseTexts)}`
 );
 
 const independentContentSubjectBody = XML.parse(independentContentSubjectASR);
@@ -178,9 +175,55 @@ assert.ok(
 const nominalSubordinateBody = XML.parse(nominalSubordinateASR);
 resegmentYouTubeASRByParagraphTiming(nominalSubordinateBody);
 const nominalSubordinateTexts = nominalSubordinateBody.timedtext.body.p.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
+assert.deepEqual(
+	nominalSubordinateTexts,
+	["the road stays open during winter when the temperature drops below minus 55 degrees"],
+	`short subordinate clause should continue the same semantic block: ${JSON.stringify(nominalSubordinateTexts)}`
+);
+
+const relativeContinuationBody = XML.parse(relativeContinuationASR);
+resegmentYouTubeASRByParagraphTiming(relativeContinuationBody);
+const relativeContinuationTexts = relativeContinuationBody.timedtext.body.p.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
+assert.deepEqual(
+	relativeContinuationTexts,
+	["today is relatively warm in yakutia only minus 40 degrees which means arian must go to school"],
+	`relative clause should remain attached when the semantic unit stays inside safety limits: ${JSON.stringify(relativeContinuationTexts)}`
+);
+
+const becauseContinuationBody = XML.parse(becauseContinuationASR);
+resegmentYouTubeASRByParagraphTiming(becauseContinuationBody);
+const becauseContinuationTexts = becauseContinuationBody.timedtext.body.p.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
+assert.deepEqual(
+	becauseContinuationTexts,
+	["there are no water treatment facilities because the pipes freeze during the long winter"],
+	`because-clause should not become a boundary by itself: ${JSON.stringify(becauseContinuationTexts)}`
+);
+
+const contrastContinuationBody = XML.parse(contrastContinuationASR);
+resegmentYouTubeASRByParagraphTiming(contrastContinuationBody);
+const contrastContinuationTexts = contrastContinuationBody.timedtext.body.p.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
+assert.deepEqual(
+	contrastContinuationTexts,
+	["usually the classes end at 2 pm but today arian finished a little earlier"],
+	`short contrast clause should stay in one semantic block: ${JSON.stringify(contrastContinuationTexts)}`
+);
+
+const semanticSafetyCapBody = XML.parse(semanticSafetyCapASR);
+resegmentYouTubeASRByParagraphTiming(semanticSafetyCapBody);
+const semanticSafetyCapParagraphs = semanticSafetyCapBody.timedtext.body.p;
+const semanticSafetyCapTexts = semanticSafetyCapParagraphs.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
+assert.ok(semanticSafetyCapTexts.length >= 2, "long punctuation-free content must still be split by safety limits");
+semanticSafetyCapParagraphs.forEach((paragraph, index) => {
+	const text = semanticSafetyCapTexts[index];
+	assert.ok(measureYouTubeCaptionWidth(text) <= 104, `semantic safety width exceeded: ${text}`);
+	const words = text.toLowerCase().match(/[a-z]+(?:['’][a-z]+)?/gu) ?? [];
+	assert.ok(words.length <= 22, `semantic safety word cap exceeded: ${text}`);
+	const duration = Number.parseInt(paragraph?.["@d"] ?? "0", 10);
+	assert.ok(duration > 0 && duration <= 9000, `semantic safety duration exceeded: ${duration}ms for ${text}`);
+});
 assert.ok(
-	nominalSubordinateTexts.some(text => /^when the temperature drops below minus 55 degrees$/u.test(text)),
-	`nominal-subject subordinate clause should form a natural cue: ${JSON.stringify(nominalSubordinateTexts)}`
+	semanticSafetyCapTexts.some(text => /^she also makes sure/u.test(text)),
+	`fresh subject-predicate clause should still become a strong new block: ${JSON.stringify(semanticSafetyCapTexts)}`
 );
 
 const independentPossessiveBody = XML.parse(independentPossessiveSubjectASR);
@@ -261,6 +304,8 @@ console.log(JSON.stringify({
 	autoGeneratedTwoLines: "passed",
 	autoGeneratedEstimatedTokenResegmentation: "passed",
 	autoGeneratedGrammarCompleteness: "passed",
+	autoGeneratedSemanticContinuation: "passed",
+	autoGeneratedSemanticSafetyCaps: "passed",
 	autoGeneratedRawParagraphIgnored: "passed",
 	autoGeneratedContentSubjectClause: "passed",
 	autoGeneratedNominalObjectAttachment: "passed",
