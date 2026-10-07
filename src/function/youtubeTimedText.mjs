@@ -541,19 +541,6 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 				) continue;
 			}
 
-			if (units.some(unit => /road|winter|temperature|drops/i.test(unit.text)) && /winter|temperature|drops/i.test(text)) {
-				console.log("[V35-BOUNDARY-DEBUG]", JSON.stringify({
-					start,
-					end,
-					text,
-					width,
-					wordCount,
-					duration,
-					next: terminal ? null : units[end + 1]?.text,
-					gapAfter,
-					grammarBoundary,
-				}));
-			}
 
 			const cueCost = scoreYouTubeASREstimatedCue(text, width, wordCount, duration, gapAfter, {
 				softWidth,
@@ -867,7 +854,15 @@ function hasYouTubeASRFinitePredicate(words, start = 0, limit = 5) {
 	for (let index = 0; index < slice.length; index += 1) {
 		const word = slice[index];
 		if (isYouTubeASRFiniteVerbMarker(word)) return true;
-		if (index >= 1 && /^[a-z]+(?:s|ed)$/u.test(word) && !isYouTubeASRFunctionWord(word)) return true;
+
+		// Morphology is only credible close to the expected predicate slot.
+		// Scanning farther ahead turns plural nouns such as "degrees" into
+		// false verbs and invents boundaries inside a clause.
+		if (
+			index <= 1 &&
+			/^[a-z]+(?:s|ed)$/u.test(word) &&
+			!isYouTubeASRFunctionWord(word)
+		) return true;
 	}
 	return false;
 }
