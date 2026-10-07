@@ -672,7 +672,7 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		return { level: "continue", reason: "relative-continuation" };
 	}
 
-	if (new Set(["than", "as", "of", "for", "with", "from", "at", "on", "in", "by", "into", "over", "under", "between", "through", "minus", "plus"]).has(rightFirst)) {
+	if (isYouTubeASRAdposition(rightFirst)) {
 		return { level: "forbid", reason: "right-dependent-phrase" };
 	}
 
@@ -784,13 +784,24 @@ function isYouTubeASRHardContinuation(last, previous) {
 }
 
 function isYouTubeASRFunctionWord(word) {
+	if (isYouTubeASRAdposition(word)) return true;
 	return new Set([
 		"a", "an", "the",
 		"my", "your", "his", "her", "its", "our", "their",
 		"this", "that", "these", "those",
-		"of", "for", "with", "from", "at", "on", "in", "by", "into", "over", "under", "between", "through", "about", "around", "without",
 		"and", "or", "but", "so", "because", "if", "when", "while", "although", "though", "unless", "since", "whereas",
-		"who", "which", "whose", "whom", "that", "than", "as", "minus", "plus",
+		"who", "which", "whose", "whom", "that",
+	]).has(word);
+}
+
+function isYouTubeASRAdposition(word) {
+	return new Set([
+		"about", "above", "across", "after", "against", "along", "amid", "among", "around", "as", "at",
+		"before", "behind", "below", "beneath", "beside", "besides", "between", "beyond", "by",
+		"despite", "down", "during", "except", "for", "from", "in", "inside", "into", "like", "near",
+		"of", "off", "on", "onto", "out", "outside", "over", "past", "per", "since", "through", "throughout",
+		"to", "toward", "towards", "under", "underneath", "unlike", "until", "up", "upon", "via", "with", "within", "without",
+		"than", "minus", "plus",
 	]).has(word);
 }
 
@@ -819,7 +830,7 @@ function hasYouTubeASRClauseCore(words) {
 	if (/^(?:i|you|he|she|it|we|they)['’](?:m|re|ve|d|ll|s)$/u.test(first)) return true;
 
 	if (isYouTubeASRPersonalSubject(first)) {
-		return hasYouTubeASRFinitePredicate(words, 1, 4) || looksLikeYouTubeASRBarePredicate(words, 1);
+		return hasYouTubeASRPersonalSubjectPredicate(words);
 	}
 
 	if (isYouTubeASRPossessiveDeterminer(first) || isYouTubeASRArticle(first) || isYouTubeASRDemonstrative(first)) {
@@ -831,6 +842,31 @@ function hasYouTubeASRClauseCore(words) {
 	// farther ahead for verb-like suffixes, which turns phrases such as
 	// "below minus 55 degrees" into invented clauses.
 	return looksLikeYouTubeASRBarePredicate(words, 1);
+}
+
+function hasYouTubeASRPersonalSubjectPredicate(words) {
+	if (words.length < 2) return false;
+	let predicateIndex = 1;
+	while (
+		predicateIndex < Math.min(words.length, 4) &&
+		isYouTubeASRSubjectModifier(words[predicateIndex])
+	) predicateIndex += 1;
+	if (predicateIndex >= words.length) return false;
+
+	const predicate = words[predicateIndex];
+	if (isYouTubeASRAuxiliary(predicate) || isYouTubeASRFiniteVerbMarker(predicate)) return true;
+	if (/^[a-z]+(?:s|ed)$/u.test(predicate) && !isYouTubeASRFunctionWord(predicate)) return true;
+	return looksLikeYouTubeASRBarePredicate(words, predicateIndex);
+}
+
+function isYouTubeASRSubjectModifier(word) {
+	if (!word) return false;
+	if (/^[a-z]+ly$/u.test(word)) return true;
+	return new Set([
+		"also", "just", "still", "already", "now", "always", "never",
+		"really", "often", "usually", "sometimes", "even", "only",
+		"probably", "actually", "definitely", "maybe", "perhaps",
+	]).has(word);
 }
 
 function hasYouTubeASRNominalSubjectPredicate(words) {
