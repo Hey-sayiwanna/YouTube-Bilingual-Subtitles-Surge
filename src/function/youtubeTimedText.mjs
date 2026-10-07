@@ -262,14 +262,14 @@ function splitOfficialCaptionAtStrongSentenceBoundary(text, minimumWidth) {
  */
 export function resegmentYouTubeASRByParagraphTiming(body, options = {}) {
 	const {
-		softWidth = 68,
-		hardWidth = 90,
-		softWords = 13,
-		hardWords = 18,
+		softWidth = 72,
+		hardWidth = 104,
+		softWords = 14,
+		hardWords = 22,
 		minimumWidth = 28,
 		maximumGap = 360,
 		strongGap = 900,
-		maximumDuration = 7800,
+		maximumDuration = 9000,
 		minimumDuration = 1000,
 	} = options;
 	const timedTextBody = body?.timedtext?.body;
@@ -618,7 +618,7 @@ function scoreYouTubeASRGrammarBoundary(units, nextIndex, currentText, currentWi
 		.flatMap(unit => extractYouTubeASRWords(unit.text));
 	if (!rightWords.length) return null;
 
-	const { softWidth = 68 } = options;
+	const { softWidth = 72 } = options;
 	const leftLast = leftWords.at(-1);
 	const leftPenultimate = leftWords.at(-2) ?? "";
 	const rightFirst = rightWords[0];
