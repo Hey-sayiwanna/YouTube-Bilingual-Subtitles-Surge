@@ -213,11 +213,14 @@ resegmentYouTubeASRByParagraphTiming(semanticSafetyCapBody);
 const semanticSafetyCapParagraphs = semanticSafetyCapBody.timedtext.body.p;
 const semanticSafetyCapTexts = semanticSafetyCapParagraphs.map(paragraph => readYouTubeTimedTextParagraph(paragraph).text);
 assert.ok(semanticSafetyCapTexts.length >= 2, "long punctuation-free content must still be split by safety limits");
-for (const text of semanticSafetyCapTexts) {
+semanticSafetyCapParagraphs.forEach((paragraph, index) => {
+	const text = semanticSafetyCapTexts[index];
 	assert.ok(measureYouTubeCaptionWidth(text) <= 104, `semantic safety width exceeded: ${text}`);
 	const words = text.toLowerCase().match(/[a-z]+(?:['’][a-z]+)?/gu) ?? [];
 	assert.ok(words.length <= 22, `semantic safety word cap exceeded: ${text}`);
-}
+	const duration = Number.parseInt(paragraph?.["@d"] ?? "0", 10);
+	assert.ok(duration > 0 && duration <= 9000, `semantic safety duration exceeded: ${duration}ms for ${text}`);
+});
 assert.ok(
 	semanticSafetyCapTexts.some(text => /^she also makes sure/u.test(text)),
 	`fresh subject-predicate clause should still become a strong new block: ${JSON.stringify(semanticSafetyCapTexts)}`
