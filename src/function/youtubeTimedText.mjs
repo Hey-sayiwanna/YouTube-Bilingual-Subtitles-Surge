@@ -541,6 +541,20 @@ function partitionYouTubeASRGrammarRegion(units, options) {
 				) continue;
 			}
 
+			if (units.some(unit => /road|winter|temperature|drops/i.test(unit.text)) && /winter|temperature|drops/i.test(text)) {
+				console.log("[V35-BOUNDARY-DEBUG]", JSON.stringify({
+					start,
+					end,
+					text,
+					width,
+					wordCount,
+					duration,
+					next: terminal ? null : units[end + 1]?.text,
+					gapAfter,
+					grammarBoundary,
+				}));
+			}
+
 			const cueCost = scoreYouTubeASREstimatedCue(text, width, wordCount, duration, gapAfter, {
 				softWidth,
 				softWords,
