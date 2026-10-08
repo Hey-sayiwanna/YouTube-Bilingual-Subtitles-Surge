@@ -3,7 +3,7 @@
  * Word-level punctuation model trained on IWSLT TED transcripts.
  */
 import MODEL_SOURCE from "./asrBoundaryModel.mjs";
-import { normalizeASRToken, splitWords, estimateWordDuration, hasStrongPunctuation } from "./asrCore.mjs";
+import { normalizeASRToken, splitWords, estimateWordDuration, hasStrongPunctuation, DEFAULT_ASR_SEGMENT_OPTIONS } from "./asrCore.mjs";
 
 
 let MODEL;
@@ -148,10 +148,27 @@ function scoreEnglish(speech, options) {
 	return probabilities;
 }
 
-/** English: unchanged v37 behaviour. */
+function filterInlineMusic(words) {
+	// Only punctuation-free English ASR. Keep independent events, opening /
+	// trailing labels, other cues and the spoken word "music" exactly as before.
+	if (words.some(word => !word.event && /[.,!?;:…]/u.test(word.text))) return words;
+	const { pauseBonusFrom, hardGap } = DEFAULT_ASR_SEGMENT_OPTIONS;
+	return words.filter((word, index) => {
+		if (word.event || !/^(?:\[music\]|\(music\))$/i.test(word.text)) return true;
+		const before = words[index - 1];
+		const after = words[index + 1];
+		if (!before || !after || before.event || after.event || !/[a-z]/i.test(before.text) || !/[a-z]/i.test(after.text)) return true;
+		// Explicit pauses must retain their labels. Removing a background token
+		// never shifts the original speech word timestamps.
+		return word.start - before.end > pauseBonusFrom || after.start - word.end > pauseBonusFrom || after.start - before.end >= hardGap;
+	});
+}
+
+/** English: v37 segmentation, with a narrow inline-music input cleanup. */
 export const EN_PROFILE = Object.freeze({
 	id: "en",
 	tokenize: splitWords,
+	filterWords: filterInlineMusic,
 	normalize: normalizeASRToken,
 	estimateDuration: estimateWordDuration,
 	score: scoreEnglish,

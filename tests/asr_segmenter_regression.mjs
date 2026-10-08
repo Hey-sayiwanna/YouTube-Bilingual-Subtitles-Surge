@@ -4,6 +4,37 @@ import XML from "../src/XML/XML.mjs";
 import { resegmentYouTubeASR, extractASRWords } from "../src/function/asrSegmenter.mjs";
 
 const silence = console.table;
+
+// Inline music must be removed BEFORE scoring/translation, while independent
+// events and speech outside the English punctuation-free path stay intact.
+function musicCaption(paragraphs, options = {}) {
+	const body = XML.parse(`<timedtext><body>${paragraphs}</body></timedtext>`);
+	resegmentYouTubeASR(body, { languageHint: "en", ...options });
+	return [].concat(body.timedtext.body.p).map(p => p.s["#"]).join(" ");
+}
+for (const marker of ["[music]", "[Music]", "[MUSIC]", "(music)"]) {
+	assert.match(
+		musicCaption(`<p t="0" d="6500"><s>and their thick winter coats ${marker} help them conserve heat</s></p>`),
+		/^And their thick winter coats help them conserve heat\.?$/,
+		`continuous sentence must exclude ${marker} without breaking coats/help`,
+	);
+}
+const exactInlineMusic = `<p t="0" d="3000"><s>their</s><s t="250"> thick</s><s t="500"> winter</s><s t="750"> coats</s><s t="1000"> [music]</s><s t="1100"> help</s><s t="1350"> them</s><s t="1600"> conserve</s><s t="1850"> heat</s></p>`;
+assert.doesNotMatch(musicCaption(exactInlineMusic), /\[music\]/i, "exact segment offsets must also clean inline music");
+assert.doesNotMatch(musicCaption(`<p t="0" d="3000"><s>their thick winter coats [music]</s></p><p t="3000" d="3000"><s>help them conserve heat</s></p>`), /\[music\]/i, "continuous speech across paragraph boundaries must still merge");
+for (const paragraphs of [
+	`<p t="0" d="6000"><s>[Music]</s></p><p t="6000" d="6000"><s>their thick winter coats help them conserve heat</s></p>`,
+	`<p t="0" d="6000"><s>[music] their thick winter coats help them conserve heat</s></p>`,
+	`<p t="0" d="3000"><s>their thick winter coats</s></p><p t="3000" d="5000"><s>[Music]</s></p><p t="8000" d="3000"><s>help them conserve heat</s></p>`,
+	`<p t="0" d="6000"><s>their thick winter coats help them conserve heat [music]</s></p>`,
+	`<p t="0" d="8000"><s>their thick winter coats</s><s t="4000"> [music]</s><s t="4500"> help them conserve heat</s></p>`,
+	`<p t="0" d="9000"><s>their thick winter coats</s><s t="1000"> [music]</s><s t="7000"> help them conserve heat</s></p>`,
+	`<p t="0" d="6500"><s>their thick winter coats, [music] help them conserve heat.</s></p>`,
+]) assert.match(musicCaption(paragraphs), /\[music\]/i, "opening, trailing, independent, paused or punctuated music must be preserved");
+assert.match(musicCaption(`<p t="0" d="6000"><s>they love music and listen every day</s></p>`), /love music and/, "spoken music is ordinary vocabulary");
+assert.match(musicCaption(`<p t="0" d="6000"><s>their thick winter coats [Applause] help them conserve heat</s></p>`), /\[Applause\]/, "other event rules are outside this fix");
+assert.match(musicCaption(`<p t="0" d="6000"><s>leurs manteaux [music] les aident à conserver la chaleur</s></p>`, { languageHint: "fr" }), /\[music\]/, "non-English captions must be unchanged");
+
 console.table = () => {};
 const { summary, report } = await import("./asr_segmenter_eval.mjs");
 console.table = silence;

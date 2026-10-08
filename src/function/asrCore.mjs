@@ -186,7 +186,7 @@ export function extractASRWords(body, profile = GENERIC_PROFILE) {
 	});
 
 	words.sort((left, right) => left.start - right.start);
-	return { words, exactTiming, paragraphs: paragraphs.length, visible: visible.length };
+	return { words: profile.filterWords?.(words) ?? words, exactTiming, paragraphs: paragraphs.length, visible: visible.length };
 }
 
 /* ------------------------------------------------------------------------ */

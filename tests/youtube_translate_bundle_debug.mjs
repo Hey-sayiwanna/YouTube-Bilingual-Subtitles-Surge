@@ -98,6 +98,35 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	return { output, translateRequestURL: translateRequestURLs.at(-1), translateRequestURLs, maximumActiveRequests };
 }
 
+const inlineMusic = await runBundle({
+	url: "https://www.youtube.com/api/timedtext?v=inline-music&kind=asr&lang=en&format=srv3&subtype=Translate",
+	translation: rows => rows.map(row => /^\[music\]$/i.test(row) ? "[音乐]" : "它们厚厚的冬季皮毛帮助它们保存热量").join("\r"),
+	testName: "english-inline-music",
+	body: `<timedtext><body><p t="0" d="1000"><s>[Music]</s></p><p t="1000" d="6500"><s>and their thick winter coats [music] help them conserve heat</s></p><p t="9000" d="3000"><s>[Music]</s></p></body></timedtext>`,
+});
+const inlineMusicRows = inlineMusic.translateRequestURLs.flatMap(url => new URL(url).searchParams.get("q").split(/\r/));
+assert.equal(inlineMusicRows.filter(row => /^\[music\]$/i.test(row)).length, 2, "opening and independent music must still be sent for translation");
+assert.ok(inlineMusicRows.some(row => /^and their thick winter coats help them conserve heat\.?$/i.test(row)), "translation must receive the complete sentence without the inline marker");
+const inlineMusicParagraphs = [].concat(XML.parse(inlineMusic.output.body).timedtext.body.p);
+assert.ok(inlineMusicParagraphs.some(p => /^and their thick winter coats help them conserve heat\.?\n它们厚厚的冬季皮毛帮助它们保存热量$/i.test(p.s["#"])), "bilingual XML must contain the cleaned English/Chinese sentence");
+assert.equal(inlineMusicParagraphs.filter(p => p.s["#"] === "[Music]\n[音乐]").length, 2);
+for (let i = 0; i < inlineMusicParagraphs.length - 1; i++) {
+	assert.ok(Number(inlineMusicParagraphs[i]["@t"]) + Number(inlineMusicParagraphs[i]["@d"]) <= Number(inlineMusicParagraphs[i + 1]["@t"]), "music cleanup must preserve non-overlapping display timing");
+}
+for (const [testName, kind, text] of [
+	["official-inline-music-preserved", "", "and their thick winter coats [music] help them conserve heat"],
+	["punctuated-asr-music-preserved", "&kind=asr", "Their thick winter coats, [music] help them conserve heat."],
+	["spoken-music-preserved", "&kind=asr", "they love music and listen every day"],
+]) {
+	const result = await runBundle({
+		url: `https://www.youtube.com/api/timedtext?v=${testName}&lang=en${kind}&format=srv3&subtype=Translate`,
+		translation: rows => rows.map(() => "译文").join("\r"),
+		testName,
+		body: `<timedtext><body><p t="0" d="6500"><s>${text}</s></p></body></timedtext>`,
+	});
+	assert.match(new URL(result.translateRequestURL).searchParams.get("q"), kind && !text.includes("[music]") ? /love music and/ : /\[music\]/i, `${testName}: translation input must preserve music`);
+}
+
 const automatic = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=test&kind=asr&lang=ko&format=srv3&subtype=Translate",
 	translation: rows => rows.map((_, index) => index === 0 ? "第一句" : "第二句").join("\r"),
