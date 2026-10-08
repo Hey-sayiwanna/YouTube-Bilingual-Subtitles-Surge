@@ -16,10 +16,9 @@ import {
 	writeYouTubeTimedTextParagraph,
 } from "./function/youtubeTimedText.mjs";
 import { resegmentYouTubeASR, ASR_SEGMENTER_VERSION } from "./function/asrCore.mjs";
+import { stripSoundTags, eventCueText, eventCueChinese, isEventCue } from "./function/asrSoundTags.mjs";
 // Resolved per bundle by rspack.config.js: src/profiles/{en,cjk,other}.mjs
 import ASR_PROFILES, { BUNDLE_ID } from "asr-profiles";
-
-const FIX_VERSION = BUNDLE_ID === "en" ? "40" : "39";
 
 const SETTINGS = Object.freeze({
 	Source: "AUTO",
@@ -42,7 +41,7 @@ const SETTINGS = Object.freeze({
 });
 
 Console.logLevel = "ALL";
-Console.warn(`Hey-sayiwanna YouTube Translate FIX ${FIX_VERSION} active`);
+Console.warn("Hey-sayiwanna YouTube Translate FIX 41 active");
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -53,13 +52,13 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const isAutomaticCaption = detectYouTubeAutomaticCaption(requestURL);
 	const isBroadcastCaption = !isAutomaticCaption && detectYouTubeBroadcastCaption(requestURL, body);
 	if (!body?.timedtext) {
-		Console.warn(`YouTube FIX ${FIX_VERSION} skipped: response is not timedtext XML`);
+		Console.warn("YouTube FIX 41 skipped: response is not timedtext XML");
 		return;
 	}
 	const chineseSource = detectYouTubeChineseCaption(requestURL, body);
 	if (chineseSource.detected) {
 		$response.headers = $response.headers ?? {};
-		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = FIX_VERSION;
+		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "41";
 		$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 		$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = "chinese-pass-through";
 		$response.headers["X-Hey-Sayiwanna-Chinese-Source"] = chineseSource.reason;
@@ -75,10 +74,10 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 		try {
 			modelResegment = resegmentYouTubeASR(body, { profiles: ASR_PROFILES, languageHint: requestURL.searchParams.get("lang") ?? "" });
 		} catch (error) {
-			Console.error(`YouTube ASR v39 segmentation crashed, using v36 fallback: ${error?.message ?? error}`);
+			Console.error(`YouTube ASR v41 segmentation crashed, using v36 fallback: ${error?.message ?? error}`);
 			modelResegment = { applied: false, reason: "exception" };
 		}
-		Console.info(`YouTube ASR v39 segmentation: bundle=${BUNDLE_ID}, applied=${modelResegment.applied}, language=${modelResegment.language}, profile=${modelResegment.profile}, reason=${modelResegment.reason}, input=${modelResegment.input ?? 0}, words=${modelResegment.words ?? 0}, output=${modelResegment.output ?? 0}`);
+		Console.info(`YouTube ASR v41 segmentation: bundle=${BUNDLE_ID}, applied=${modelResegment.applied}, language=${modelResegment.language}, profile=${modelResegment.profile}, reason=${modelResegment.reason}, input=${modelResegment.input ?? 0}, words=${modelResegment.words ?? 0}, output=${modelResegment.output ?? 0}`);
 		asrMode = modelResegment.applied ? `asr-v${ASR_SEGMENTER_VERSION}-${modelResegment.profile === modelResegment.language ? modelResegment.language : `generic-${modelResegment.language}`}` : "unified-semantic-asr-v36";
 		if (modelResegment.applied) {
 			disableYouTubeASRRollingWindow(body);
@@ -114,19 +113,39 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	paragraphs = Array.isArray(paragraphs) ? paragraphs : paragraphs ? [paragraphs] : [];
 	const parsedParagraphs = paragraphs.map(paragraph => readYouTubeTimedTextParagraph(paragraph));
 	const fullText = parsedParagraphs.map(item => item.text);
+	// v41: automatic captions never carry inline sound tags into the text that
+	// is shown or translated ("even [music] the simplest..." -> "even the simplest...").
+	// This also covers the v36 safety-net path. A cue that is only a tag becomes "[Music]".
+	let strippedTags = 0;
+	if (isAutomaticCaption) {
+		fullText.forEach((text, index) => {
+			const cleaned = stripSoundTags(text);
+			if (!cleaned.tags.length) return;
+			strippedTags += cleaned.tags.length;
+			fullText[index] = cleaned.text || eventCueText(cleaned.tags) || text;
+		});
+	}
+	// Event cues ([Music], [Applause], ...) get a fixed Chinese text and are not sent to Google.
+	const fixedTranslation = fullText.map(text => (isEventCue(text) ? eventCueChinese(text) : ""));
+	const sendIndexes = fullText.map((_, index) => index).filter(index => !fixedTranslation[index]);
+	const sendText = sendIndexes.map(index => fullText[index]);
+	Console.info(`YouTube v41 sound tags: stripped=${strippedTags}, eventCues=${fullText.length - sendIndexes.length}`);
 
 	Console.info(`XML paragraph count: ${paragraphs.length}`);
 	Console.info(`XML fullText count: ${fullText.length}`);
 	Console.info(`YouTube srv3 segmented paragraph count: ${parsedParagraphs.filter(item => item.segmented).length}`);
 
-	let translation = await Translator(SETTINGS.Method, fullText, isAutomaticCaption, isBroadcastCaption);
-	Console.info(`XML translation count: ${translation?.length ?? 0}`);
-	if (!Array.isArray(translation) || translation.length !== fullText.length) {
-		Console.warn(`YouTube XML translation mismatch: origin=${fullText.length}, translated=${translation?.length ?? 0}; retry with Row`);
-		translation = await Translator("Row", fullText, isAutomaticCaption, isBroadcastCaption);
+	let sentTranslation = sendText.length ? await Translator(SETTINGS.Method, sendText, isAutomaticCaption, isBroadcastCaption) : [];
+	Console.info(`XML translation count: ${sentTranslation?.length ?? 0}`);
+	if (sendText.length && (!Array.isArray(sentTranslation) || sentTranslation.length !== sendText.length)) {
+		Console.warn(`YouTube XML translation mismatch: origin=${sendText.length}, translated=${sentTranslation?.length ?? 0}; retry with Row`);
+		sentTranslation = await Translator("Row", sendText, isAutomaticCaption, isBroadcastCaption);
 	}
-	if (!Array.isArray(translation)) translation = [];
-	translation = fullText.map((_, index) => normalizeTranslation(translation[index]));
+	if (!Array.isArray(sentTranslation)) sentTranslation = [];
+	const translation = fixedTranslation.slice();
+	sendIndexes.forEach((index, position) => {
+		translation[index] = normalizeTranslation(sentTranslation[position]);
+	});
 
 	paragraphs.forEach((paragraph, index) => {
 		writeYouTubeTimedTextParagraph(paragraph, fullText[index], translation[index], {
@@ -138,7 +157,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = FIX_VERSION;
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "41";
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = asrMode;
 	$response.headers["X-Hey-Sayiwanna-Bundle"] = BUNDLE_ID;
@@ -230,7 +249,7 @@ async function googleTranslate(text) {
 		url: `https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=auto&tl=zh-CN&q=${encodeURIComponent(text.join("\r"))}`,
 		headers: {
 			Accept: "*/*",
-			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/39",
+			"User-Agent": "Hey-sayiwanna-YouTube-Bilingual/41",
 			Referer: "https://translate.google.com",
 		},
 		timeout: 15,

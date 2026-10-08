@@ -21,7 +21,9 @@
  * Pure functions, no network, no dependencies except the model table.
  */
 
-export const ASR_SEGMENTER_VERSION = "39.0";
+import { stripSoundTags, eventCueText } from "./asrSoundTags.mjs";
+
+export const ASR_SEGMENTER_VERSION = "41.0";
 
 export const DEFAULT_ASR_SEGMENT_OPTIONS = Object.freeze({
 	softChars: 62, // comfortable length of one English cue
@@ -108,20 +110,38 @@ export function extractASRWords(body, profile = GENERIC_PROFILE) {
 			: [{ text: textOf(paragraph?.["#"] ?? paragraph), offset: 0 }];
 		const text = pieces.map(piece => piece.text).join("").replace(/\u200b/g, "").trim();
 		if (!text) continue;
-		visible.push({ paragraph, start, duration: int(paragraph?.["@d"]), pieces, text });
+		// v41: inline sound tags ("even [music] the simplest...", ">> [Music] >>.")
+		// are removed from speech; a cue made only of tags becomes one event.
+		const cleaned = stripSoundTags(text);
+		if (!cleaned.text && cleaned.tags.length) {
+			const eventText = eventCueText(cleaned.tags);
+			if (eventText) visible.push({ paragraph, start, duration: int(paragraph?.["@d"]), pieces: [{ text: eventText, offset: 0 }], text: eventText, event: true });
+			continue;
+		}
+		if (cleaned.tags.length) {
+			pieces.forEach((piece, pieceIndex) => {
+				const part = stripSoundTags(piece.text);
+				piece.text = part.text ? ` ${part.text}` : "";
+				if (part.text || !part.orphanPunct) return;
+				for (let back = pieceIndex - 1; back >= 0; back -= 1) {
+					if (!pieces[back].text) continue;
+					if (/[\p{L}\p{N}'’]$/u.test(pieces[back].text)) pieces[back].text += part.orphanPunct;
+					break;
+				}
+			});
+		}
+		visible.push({ paragraph, start, duration: int(paragraph?.["@d"]), pieces, text: cleaned.text });
 	}
 	const exactTiming = segments > 0 && explicitOffsets / Math.max(1, segments - visible.length) >= 0.5;
 
 	const words = [];
-	let previousSpeechDisplayEnd;
 	visible.forEach((item, index) => {
 		const nextStart = visible[index + 1]?.start;
-		const displayEnd = item.duration !== undefined ? item.start + item.duration : item.start + 3000;
-		let end = displayEnd;
+		let end = item.duration !== undefined ? item.start + item.duration : item.start + 3000;
 		if (nextStart !== undefined && nextStart > item.start) end = Math.min(end, nextStart);
 		if (end <= item.start) end = item.start + 1;
 
-		if (EVENT_RE.test(item.text)) {
+		if (item.event || EVENT_RE.test(item.text)) {
 			words.push({ text: item.text.trim(), start: item.start, end, event: true, template: item.paragraph });
 			return;
 		}
@@ -154,6 +174,13 @@ export function extractASRWords(body, profile = GENERIC_PROFILE) {
 			});
 		}
 
+		// v41: a tag split over two <s> pieces ("[Foreign" + " speech]") leaves
+		// bracket fragments; drop them.
+		for (let index = local.length - 1; index >= 0; index -= 1) {
+			if (/^\[[^\]]*$/u.test(local[index].text) || /^[^\[]*\][.,!?]*$/u.test(local[index].text)) local.splice(index, 1);
+		}
+		if (!local.length) return;
+
 		// Roll-up formats sometimes repeat the previous line as the start of
 		// the next paragraph. Drop such a duplicated prefix - but only when the
 		// new paragraph starts while those words are still on screen, so that
@@ -161,10 +188,7 @@ export function extractASRWords(body, profile = GENERIC_PROFILE) {
 		// patients help") is never deleted.
 		const previousSpeech = words.filter(word => !word.event).slice(-12);
 		const previousWords = previousSpeech.map(word => profile.normalize(word.text));
-		// Exact word offsets can distinguish spoken repetition from captions
-		// whose display windows overlap after the preceding speech has ended.
-		const startsInsidePrevious = previousSpeech.length > 0 && item.start < previousSpeechDisplayEnd
-			&& (!exactTiming || item.start <= previousSpeech.at(-1).start);
+		const startsInsidePrevious = previousSpeech.length > 0 && item.start < previousSpeech.at(-1).end;
 		const currentWords = local.map(word => profile.normalize(word.text));
 		let overlap = 0;
 		for (let size = startsInsidePrevious ? Math.min(previousWords.length, currentWords.length - 1) : 0; size >= 3; size -= 1) {
@@ -180,13 +204,10 @@ export function extractASRWords(body, profile = GENERIC_PROFILE) {
 				: nextWordStart;
 			words.push({ text: word.text, start: word.start, end: Math.max(word.start + 1, wordEnd), event: false, template: item.paragraph });
 		});
-		// Keep the original display end: word timing above is clipped to the
-		// next paragraph and cannot establish whether two captions overlap.
-		if (local.length > overlap) previousSpeechDisplayEnd = displayEnd;
 	});
 
 	words.sort((left, right) => left.start - right.start);
-	return { words: profile.filterWords?.(words) ?? words, exactTiming, paragraphs: paragraphs.length, visible: visible.length };
+	return { words, exactTiming, paragraphs: paragraphs.length, visible: visible.length };
 }
 
 /* ------------------------------------------------------------------------ */
@@ -442,7 +463,11 @@ export function resegmentYouTubeASR(body, userOptions = {}) {
 		if (latin / speechWords.length < 0.6) return { applied: false, reason: "not-latin-script", language, profile: profile.id, words: speechWords.length };
 	}
 
-	const cues = segmentASRWords(extracted.words, { ...userOptions, profile });
+	// v41: newer YouTube ASR is already punctuated. Then the track's own
+	// punctuation is trusted and nothing is added (no extra "." or capitals).
+	const punctuated = speechWords.filter(word => /[.,!?;:。、！？，]["'’”)]*$/u.test(word.text)).length / speechWords.length;
+	const alreadyPunctuated = punctuated >= 0.06;
+	const cues = segmentASRWords(extracted.words, { ...(alreadyPunctuated ? { addPunctuation: false } : {}), ...userOptions, profile });
 	timedTextBody.p = cues.map(cue => {
 		const paragraph = {};
 		for (const [key, value] of Object.entries(cue.template ?? {})) {
@@ -459,6 +484,7 @@ export function resegmentYouTubeASR(body, userOptions = {}) {
 		reason: extracted.exactTiming ? "exact-word-timing" : "estimated-word-timing",
 		language,
 		profile: profile.id,
+		punctuated: alreadyPunctuated,
 		input: extracted.paragraphs,
 		visible: extracted.visible,
 		words: speechWords.length,

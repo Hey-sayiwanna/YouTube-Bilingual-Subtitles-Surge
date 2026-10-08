@@ -42,5 +42,7 @@ jobs:
         run: npm run test:asr-cjk
       - name: Test generic ASR segmentation
         run: npm run test:asr-generic
+      - name: Test ASR sound-tag handling
+        run: npm run test:asr-tags
       - name: Confirm generated bundles are committed
-        run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v39-en.bundle.js Translate.response.youtube-fix-v39-cjk.bundle.js Translate.response.youtube-fix-v39-other.bundle.js
+        run: git diff --exit-code -- request.youtube-standalone-v18.bundle.js response.youtube-standalone-v18.bundle.js Translate.response.youtube-fix-v41-en.bundle.js Translate.response.youtube-fix-v41-cjk.bundle.js Translate.response.youtube-fix-v41-other.bundle.js

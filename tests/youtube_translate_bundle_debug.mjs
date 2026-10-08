@@ -8,20 +8,20 @@ const moduleRules = readFileSync(new URL("../YouTube.Bilingual.sgmodule", import
 	.filter(line => line.startsWith("DualSubs.AutoZH.TimedText.Translate.response"))
 	.map(line => ({
 		pattern: new RegExp(line.match(/pattern=([^,]+),/)[1]),
-		bundle: line.match(/script-path=\S*\/(Translate\.response\.youtube-fix-v\d+-[a-z]+\.bundle\.js)/)[1],
+		bundle: line.match(/script-path=\S*\/(Translate\.response\.youtube-fix-v41-[a-z]+\.bundle\.js)/)[1],
 	}));
 export function routeBundle(url) {
 	const matches = moduleRules.filter(rule => rule.pattern.test(url));
 	assert.equal(matches.length, 1, `exactly one timedtext rule must match ${url}, got ${matches.length}`);
 	return matches[0].bundle;
 }
-assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=en&kind=asr&subtype=Translate"), "Translate.response.youtube-fix-v40-en.bundle.js");
-assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&caps=asr&lang=en-GB&tlang=zh-Hans&subtype=Translate"), "Translate.response.youtube-fix-v40-en.bundle.js");
-assert.equal(routeBundle("https://m.youtube.com/api/timedtext?lang=ja&v=a&subtype=Translate"), "Translate.response.youtube-fix-v39-cjk.bundle.js");
-assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=ko&subtype=Translate&kind=asr"), "Translate.response.youtube-fix-v39-cjk.bundle.js");
-assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=es&tlang=en&subtype=Translate"), "Translate.response.youtube-fix-v39-other.bundle.js", "tlang=en must not route to the English bundle");
-assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=eng&subtype=Translate"), "Translate.response.youtube-fix-v39-other.bundle.js");
-assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&subtype=Translate"), "Translate.response.youtube-fix-v39-other.bundle.js");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=en&kind=asr&subtype=Translate"), "Translate.response.youtube-fix-v41-en.bundle.js");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&caps=asr&lang=en-GB&tlang=zh-Hans&subtype=Translate"), "Translate.response.youtube-fix-v41-en.bundle.js");
+assert.equal(routeBundle("https://m.youtube.com/api/timedtext?lang=ja&v=a&subtype=Translate"), "Translate.response.youtube-fix-v41-cjk.bundle.js");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=ko&subtype=Translate&kind=asr"), "Translate.response.youtube-fix-v41-cjk.bundle.js");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=es&tlang=en&subtype=Translate"), "Translate.response.youtube-fix-v41-other.bundle.js", "tlang=en must not route to the English bundle");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=eng&subtype=Translate"), "Translate.response.youtube-fix-v41-other.bundle.js");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&subtype=Translate"), "Translate.response.youtube-fix-v41-other.bundle.js");
 assert.equal(moduleRules.filter(rule => rule.pattern.test("https://www.youtube.com/api/timedtext?v=a&lang=en")).length, 0, "requests without subtype=Translate are not touched");
 
 
@@ -98,36 +98,6 @@ async function runBundle({ url, translation, testName, body = rollingSrv3, concu
 	return { output, translateRequestURL: translateRequestURLs.at(-1), translateRequestURLs, maximumActiveRequests };
 }
 
-const inlineMusic = await runBundle({
-	url: "https://www.youtube.com/api/timedtext?v=inline-music&kind=asr&lang=en&format=srv3&subtype=Translate",
-	translation: rows => rows.map(row => /^\[music\]$/i.test(row) ? "[音乐]" : "它们厚厚的冬季皮毛帮助它们保存热量").join("\r"),
-	testName: "english-inline-music",
-	body: `<timedtext><body><p t="0" d="1000"><s>[Music]</s></p><p t="1000" d="6500"><s>and their thick winter coats [music] help them conserve heat</s></p><p t="9000" d="3000"><s>[Music]</s></p></body></timedtext>`,
-});
-const inlineMusicRows = inlineMusic.translateRequestURLs.flatMap(url => new URL(url).searchParams.get("q").split(/\r/));
-assert.equal(inlineMusic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "40", "the English runtime must identify the new release");
-assert.equal(inlineMusicRows.filter(row => /^\[music\]$/i.test(row)).length, 2, "opening and independent music must still be sent for translation");
-assert.ok(inlineMusicRows.some(row => /^and their thick winter coats help them conserve heat\.?$/i.test(row)), "translation must receive the complete sentence without the inline marker");
-const inlineMusicParagraphs = [].concat(XML.parse(inlineMusic.output.body).timedtext.body.p);
-assert.ok(inlineMusicParagraphs.some(p => /^and their thick winter coats help them conserve heat\.?\n它们厚厚的冬季皮毛帮助它们保存热量$/i.test(p.s["#"])), "bilingual XML must contain the cleaned English/Chinese sentence");
-assert.equal(inlineMusicParagraphs.filter(p => p.s["#"] === "[Music]\n[音乐]").length, 2);
-for (let i = 0; i < inlineMusicParagraphs.length - 1; i++) {
-	assert.ok(Number(inlineMusicParagraphs[i]["@t"]) + Number(inlineMusicParagraphs[i]["@d"]) <= Number(inlineMusicParagraphs[i + 1]["@t"]), "music cleanup must preserve non-overlapping display timing");
-}
-for (const [testName, kind, text] of [
-	["official-inline-music-preserved", "", "and their thick winter coats [music] help them conserve heat"],
-	["punctuated-asr-music-preserved", "&kind=asr", "Their thick winter coats, [music] help them conserve heat."],
-	["spoken-music-preserved", "&kind=asr", "they love music and listen every day"],
-]) {
-	const result = await runBundle({
-		url: `https://www.youtube.com/api/timedtext?v=${testName}&lang=en${kind}&format=srv3&subtype=Translate`,
-		translation: rows => rows.map(() => "译文").join("\r"),
-		testName,
-		body: `<timedtext><body><p t="0" d="6500"><s>${text}</s></p></body></timedtext>`,
-	});
-	assert.match(new URL(result.translateRequestURL).searchParams.get("q"), kind && !text.includes("[music]") ? /love music and/ : /\[music\]/i, `${testName}: translation input must preserve music`);
-}
-
 const automatic = await runBundle({
 	url: "https://www.youtube.com/api/timedtext?v=test&kind=asr&lang=ko&format=srv3&subtype=Translate",
 	translation: rows => rows.map((_, index) => index === 0 ? "第一句" : "第二句").join("\r"),
@@ -137,9 +107,9 @@ const automatic = await runBundle({
 assert.match(automatic.translateRequestURL, /translate\.googleapis\.com/);
 assert.match(automatic.translateRequestURL, /[?&]sl=auto(?:&|$)/);
 assert.match(automatic.translateRequestURL, /[?&]tl=zh-CN(?:&|$)/);
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "39");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "41");
 assert.equal(automatic.output.headers["X-Hey-Sayiwanna-Settings"], "standalone-no-boxjs");
-assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "asr-v39.0-ko");
+assert.equal(automatic.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "asr-v41.0-ko");
 const automaticBody = XML.parse(automatic.output.body).timedtext.body;
 assert.equal(automaticBody.w, undefined);
 assert.ok(automaticBody.p.every(paragraph => paragraph["@w"] === undefined && paragraph["@a"] === undefined));
@@ -155,7 +125,7 @@ const ufcParagraphTimed = await runBundle({
 	body: ufcParagraphTimedSrv3,
 });
 const ufcBody = XML.parse(ufcParagraphTimed.output.body).timedtext.body;
-assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "asr-v39.0-en");
+assert.equal(ufcParagraphTimed.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "asr-v41.0-en");
 assert.ok(ufcBody.p.length < 6, "v36 must remove empty display events and merge continuous ASR fragments");
 assert.match(ufcParagraphTimed.output.body, /instead of waiting for khabib to come at him\.?&#x000A;UFC译文1/i, "orphan 'him' must be translated together with 'come at'");
 assert.doesNotMatch(ufcParagraphTimed.output.body, /<s>him&#x000A;/, "v36 must not leave 'him' as a standalone translated cue");
@@ -222,7 +192,7 @@ const official = await runBundle({
 	body: plainOfficialSrv3,
 });
 
-assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "39");
+assert.equal(official.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "41");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-ASR-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Broadcast-Mode"], "unchanged");
 assert.equal(official.output.headers["X-Hey-Sayiwanna-Caption-Mode"], "official");
