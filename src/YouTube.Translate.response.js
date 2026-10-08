@@ -19,6 +19,8 @@ import { resegmentYouTubeASR, ASR_SEGMENTER_VERSION } from "./function/asrCore.m
 // Resolved per bundle by rspack.config.js: src/profiles/{en,cjk,other}.mjs
 import ASR_PROFILES, { BUNDLE_ID } from "asr-profiles";
 
+const FIX_VERSION = BUNDLE_ID === "en" ? "40" : "39";
+
 const SETTINGS = Object.freeze({
 	Source: "AUTO",
 	Target: "ZH-HANS",
@@ -40,7 +42,7 @@ const SETTINGS = Object.freeze({
 });
 
 Console.logLevel = "ALL";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 39 active");
+Console.warn(`Hey-sayiwanna YouTube Translate FIX ${FIX_VERSION} active`);
 Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 (async () => {
@@ -51,13 +53,13 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 	const isAutomaticCaption = detectYouTubeAutomaticCaption(requestURL);
 	const isBroadcastCaption = !isAutomaticCaption && detectYouTubeBroadcastCaption(requestURL, body);
 	if (!body?.timedtext) {
-		Console.warn("YouTube FIX 39 skipped: response is not timedtext XML");
+		Console.warn(`YouTube FIX ${FIX_VERSION} skipped: response is not timedtext XML`);
 		return;
 	}
 	const chineseSource = detectYouTubeChineseCaption(requestURL, body);
 	if (chineseSource.detected) {
 		$response.headers = $response.headers ?? {};
-		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "39";
+		$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = FIX_VERSION;
 		$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 		$response.headers["X-Hey-Sayiwanna-Caption-Mode"] = "chinese-pass-through";
 		$response.headers["X-Hey-Sayiwanna-Chinese-Source"] = chineseSource.reason;
@@ -136,7 +138,7 @@ Console.warn("YouTube standalone settings active; BoxJs bypassed");
 
 	$response.body = XML.stringify(body);
 	$response.headers = $response.headers ?? {};
-	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "39";
+	$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = FIX_VERSION;
 	$response.headers["X-Hey-Sayiwanna-Settings"] = "standalone-no-boxjs";
 	$response.headers["X-Hey-Sayiwanna-ASR-Mode"] = asrMode;
 	$response.headers["X-Hey-Sayiwanna-Bundle"] = BUNDLE_ID;

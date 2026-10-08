@@ -7,7 +7,8 @@ import pkg from "./package.json" with { type: "json" };
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
-// v39 ships three independent bundles. They share all code and differ only in
+// v40 updates only the English bundle; CJK/other retain their v39 filenames.
+// The three independent bundles share all code and differ only in
 // which language models are compiled in (src/profiles/*.mjs):
 //   en    -> English model
 //   cjk   -> Japanese + Korean models
@@ -18,7 +19,7 @@ const bundles = { en: "en", cjk: "cjk", other: "other" };
 export default Object.entries(bundles).map(([name, profile]) =>
 	defineConfig({
 		name,
-		entry: { [`Translate.response.youtube-fix-v39-${name}`]: "./src/YouTube.Translate.response.js" },
+		entry: { [`Translate.response.youtube-fix-v${name === "en" ? 40 : 39}-${name}`]: "./src/YouTube.Translate.response.js" },
 		resolve: { alias: { "asr-profiles": path.join(projectRoot, "src/profiles", `${profile}.mjs`) } },
 		output: {
 			path: projectRoot,
@@ -30,7 +31,7 @@ export default Object.entries(bundles).map(([name, profile]) =>
 		plugins: [
 			new NodePolyfillPlugin(),
 			new rspack.BannerPlugin({
-				banner: `console.log('Hey-sayiwanna YouTube Bilingual v${pkg.version} [${name}]');`,
+				banner: `console.log('Hey-sayiwanna YouTube Bilingual v${name === "en" ? pkg.version : "39.0.0"} [${name}]');`,
 				raw: true,
 			}),
 		],

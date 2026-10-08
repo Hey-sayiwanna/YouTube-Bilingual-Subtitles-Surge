@@ -8,15 +8,15 @@ const moduleRules = readFileSync(new URL("../YouTube.Bilingual.sgmodule", import
 	.filter(line => line.startsWith("DualSubs.AutoZH.TimedText.Translate.response"))
 	.map(line => ({
 		pattern: new RegExp(line.match(/pattern=([^,]+),/)[1]),
-		bundle: line.match(/script-path=\S*\/(Translate\.response\.youtube-fix-v39-[a-z]+\.bundle\.js)/)[1],
+		bundle: line.match(/script-path=\S*\/(Translate\.response\.youtube-fix-v\d+-[a-z]+\.bundle\.js)/)[1],
 	}));
 export function routeBundle(url) {
 	const matches = moduleRules.filter(rule => rule.pattern.test(url));
 	assert.equal(matches.length, 1, `exactly one timedtext rule must match ${url}, got ${matches.length}`);
 	return matches[0].bundle;
 }
-assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=en&kind=asr&subtype=Translate"), "Translate.response.youtube-fix-v39-en.bundle.js");
-assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&caps=asr&lang=en-GB&tlang=zh-Hans&subtype=Translate"), "Translate.response.youtube-fix-v39-en.bundle.js");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=en&kind=asr&subtype=Translate"), "Translate.response.youtube-fix-v40-en.bundle.js");
+assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&caps=asr&lang=en-GB&tlang=zh-Hans&subtype=Translate"), "Translate.response.youtube-fix-v40-en.bundle.js");
 assert.equal(routeBundle("https://m.youtube.com/api/timedtext?lang=ja&v=a&subtype=Translate"), "Translate.response.youtube-fix-v39-cjk.bundle.js");
 assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=ko&subtype=Translate&kind=asr"), "Translate.response.youtube-fix-v39-cjk.bundle.js");
 assert.equal(routeBundle("https://www.youtube.com/api/timedtext?v=a&lang=es&tlang=en&subtype=Translate"), "Translate.response.youtube-fix-v39-other.bundle.js", "tlang=en must not route to the English bundle");
@@ -105,6 +105,7 @@ const inlineMusic = await runBundle({
 	body: `<timedtext><body><p t="0" d="1000"><s>[Music]</s></p><p t="1000" d="6500"><s>and their thick winter coats [music] help them conserve heat</s></p><p t="9000" d="3000"><s>[Music]</s></p></body></timedtext>`,
 });
 const inlineMusicRows = inlineMusic.translateRequestURLs.flatMap(url => new URL(url).searchParams.get("q").split(/\r/));
+assert.equal(inlineMusic.output.headers["X-Hey-Sayiwanna-YouTube-Fix"], "40", "the English runtime must identify the new release");
 assert.equal(inlineMusicRows.filter(row => /^\[music\]$/i.test(row)).length, 2, "opening and independent music must still be sent for translation");
 assert.ok(inlineMusicRows.some(row => /^and their thick winter coats help them conserve heat\.?$/i.test(row)), "translation must receive the complete sentence without the inline marker");
 const inlineMusicParagraphs = [].concat(XML.parse(inlineMusic.output.body).timedtext.body.p);

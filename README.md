@@ -21,6 +21,11 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ## 更新日志
 
+### 2026-10-09（v40）
+
+- 仅清理英文无标点自动字幕中混入连续语句的 `[music]` / `(music)`，保留片头、独立音乐提示、明显停顿处提示及普通单词 `music`。其他事件标签规则不变。
+- 模块标记为 v40，英文脚本使用新的 GitHub 直连 `v40-en` 文件地址，绕过原 CDN 缓存并便于更新与测试；日韩和其他语言继续使用原 v39 脚本。模块订阅地址不变。
+
 ### 2026-10-07（v37-v39）
 
 - **v39**：利用Claude opus5.5模型，进行专门针对Youtube自动生成式字幕且没有标点进行辅助断句的字幕，进行完全重构。利用TED等英文演讲，进行断句模型训练，分成三个入口，针对英、日韩、其他语言。英文进 `v39-en`（约 720KB）；日语、韩语进 `v39-cjk`（约 570KB）；其他语言进 `v39-other`（约 54KB）。
@@ -72,7 +77,7 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 | `request.youtube-standalone-v18.bundle.js` | 当前仍在使用的 YouTube Player 请求脚本 |
 | `response.youtube-standalone-v18.bundle.js` | 当前仍在使用的 YouTube Player / GetWatch 响应脚本|
 | `Translate.response.youtube-fix-v24.bundle.js` ～ `v28.bundle.js` | 保留给仍在使用旧模块的用户做兼容 |
-| `Translate.response.youtube-fix-v39-en.bundle.js` | 当前英文字幕脚本（含英文模型） |
+| `Translate.response.youtube-fix-v40-en.bundle.js` | 当前英文字幕脚本（含英文模型及句中音乐清理） |
 | `Translate.response.youtube-fix-v39-cjk.bundle.js` | 当前日语、韩语字幕脚本（含日韩模型） |
 | `Translate.response.youtube-fix-v39-other.bundle.js` | 当前其他语言字幕脚本（无模型，通用标准） |
 | `src/function/asrCore.mjs` | 断句框架：取词、动态规划、时间轴、语言识别，以及通用标准 |

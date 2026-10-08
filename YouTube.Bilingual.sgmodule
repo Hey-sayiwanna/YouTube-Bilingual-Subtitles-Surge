@@ -1,10 +1,10 @@
-#!name=YouTube 自动简中双语字幕 v39
-#!desc=v39 字幕脚本拆成英文/日韩/其他三个独立包按语言分流；英文、日韩自动字幕用专门断句模型，其他语言用通用标准（标点+停顿+长度）替代v36，单条长度时长受限、时间轴不重叠
+#!name=YouTube 自动简中双语字幕 v40
+#!desc=v40 仅清理英文无标点自动字幕的句中音乐提示，保留独立提示；字幕脚本按语言分流；英文、日韩自动字幕用专门断句模型，其他语言用通用标准（标点+停顿+长度）替代v36，单条长度时长受限、时间轴不重叠
 #!author=Hey-sayiwanna
 #!homepage=https://github.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge
 #!icon=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/src/assets/icon_rounded.png
 #!category=YouTube
-#!version=39.0
+#!version=40.0
 
 [Script]
 
@@ -23,12 +23,12 @@ DualSubs.AutoZH.GetWatch.response.proto = type=http-response, pattern=^https?:\/
 
 DualSubs.AutoZH.TimedText.request = type=http-request, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext(\?.+)?$, script-path=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/force_translate_request.js
 
-# v39 三个字幕响应脚本按 timedtext 请求的 lang= 参数互斥分流（只会命中其中一个）：
-#   英文 lang=en*        -> v39-en    （英文断句模型）
+# 三个字幕响应脚本按 timedtext 请求的 lang= 参数互斥分流（只会命中其中一个）：
+#   英文 lang=en*        -> v40-en    （英文断句模型）
 #   日韩 lang=ja* / ko*  -> v39-cjk   （日语+韩语断句模型）
 #   其他所有语言          -> v39-other （无模型，通用标准）
 # 某一个包出问题时，只需把对应那一行的 script-path 改回旧版本即可回退，另外两条不受影响。
-DualSubs.AutoZH.TimedText.Translate.response.EN = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext(?=\?)(?=.*subtype=Translate)(?=.*[?&]lang=en(?:[-_][^&]*)?(?:&|$)).*$, requires-body=1, max-size=-1, timeout=60, engine=webview, debug=true, script-path=https://cdn.jsdelivr.net/gh/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge@main/Translate.response.youtube-fix-v39-en.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=ALL
+DualSubs.AutoZH.TimedText.Translate.response.EN = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext(?=\?)(?=.*subtype=Translate)(?=.*[?&]lang=en(?:[-_][^&]*)?(?:&|$)).*$, requires-body=1, max-size=-1, timeout=60, engine=webview, debug=true, script-path=https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge/main/Translate.response.youtube-fix-v40-en.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=ALL
 DualSubs.AutoZH.TimedText.Translate.response.CJK = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext(?=\?)(?=.*subtype=Translate)(?=.*[?&]lang=(?:ja|ko)(?:[-_][^&]*)?(?:&|$)).*$, requires-body=1, max-size=-1, timeout=60, engine=webview, debug=true, script-path=https://cdn.jsdelivr.net/gh/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge@main/Translate.response.youtube-fix-v39-cjk.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=ALL
 DualSubs.AutoZH.TimedText.Translate.response.Other = type=http-response, pattern=^https?:\/\/(www|m)\.youtube\.com\/api\/timedtext(?=\?)(?=.*subtype=Translate)(?!.*[?&]lang=(?:en|ja|ko)(?:[-_][^&]*)?(?:&|$)).*$, requires-body=1, max-size=-1, timeout=60, engine=webview, debug=true, script-path=https://cdn.jsdelivr.net/gh/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surge@main/Translate.response.youtube-fix-v39-other.bundle.js, argument=Type=Translate&Types=Translate&AutoCC=true&Position=Forward&Vendor=Google&ShowOnly=false&Languages%5B0%5D=AUTO&Languages%5B1%5D=ZH-HANS&LogLevel=ALL
 
