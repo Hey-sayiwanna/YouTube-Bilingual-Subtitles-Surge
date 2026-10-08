@@ -21,10 +21,9 @@ https://raw.githubusercontent.com/Hey-sayiwanna/YouTube-Bilingual-Subtitles-Surg
 
 ## 更新日志
 
-### 2026-10-09（v40）
+### 2026-10-09
 
-- 仅清理英文无标点自动字幕中混入连续语句的 `[music]` / `(music)`，保留片头、独立音乐提示、明显停顿处提示及普通单词 `music`。其他事件标签规则不变。
-- 模块标记为 v40，英文脚本使用新的 GitHub 直连 `v40-en` 文件地址，绕过原 CDN 缓存并便于更新与测试；日韩和其他语言继续使用原 v39 脚本。模块订阅地址不变。
+- **v40-v41**：修复字幕中混杂【music】的问题
 
 ### 2026-10-07（v37-v39）
 
